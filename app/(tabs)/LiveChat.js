@@ -782,11 +782,8 @@ const LiveChatScreen = () => {
           globalAgentEnabled: globalAgentEnabled
         }));
         
-        // Ensure AI agent is enabled when app goes to background
-        if (!globalAgentEnabled) {
-          console.log('🤖 App going to background - enabling AI agent automatically');
-          await enableAIAgentInBackground();
-        }
+        // Note: Removed automatic AI agent enabling when app goes to background
+        // The AI agent status should only be changed by user interaction via toggle
       } catch (error) {
         console.log('📱 Error saving app state:', error);
       }
@@ -796,9 +793,8 @@ const LiveChatScreen = () => {
     if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
       console.log('📱 App returned to foreground');
 
-      // Enable AI agent when app comes to foreground
-      console.log('🤖 App returned to foreground - ensuring AI agent is enabled');
-      await ensureAIAgentEnabled();
+      // Note: Removed automatic AI agent enabling when app comes to foreground
+      // The AI agent status should only be changed by user interaction via toggle
 
       // Only check authentication if component is mounted
       if (!isMounted) {
@@ -1116,14 +1112,22 @@ const LiveChatScreen = () => {
         setAiAgentStatus(storedStatus);
         setGlobalAgentEnabled(storedStatus === 'active');
       } else {
-        console.log('🔧 loadInitialAIAgentStatus: No stored status, enabling AI agent by default on app startup');
-        // Enable AI agent by default on app startup
-        await enableAIAgentInBackground();
+        console.log('🔧 loadInitialAIAgentStatus: No stored status, setting AI agent to inactive by default');
+        // Set AI agent to inactive by default - user can enable it manually via toggle
+        setAiAgentStatus('inactive');
+        setGlobalAgentEnabled(false);
+        await AsyncStorage.setItem('aiAgentStatus', 'inactive');
       }
     } catch (error) {
       console.error('❌ Error loading initial AI agent status:', error);
-      // On error, still try to enable AI agent by default
-      await enableAIAgentInBackground();
+      // On error, set AI agent to inactive by default - user can enable it manually
+      setAiAgentStatus('inactive');
+      setGlobalAgentEnabled(false);
+      try {
+        await AsyncStorage.setItem('aiAgentStatus', 'inactive');
+      } catch (storageError) {
+        console.error('❌ Error storing default AI agent status:', storageError);
+      }
     }
   };
 
@@ -1149,9 +1153,11 @@ const LiveChatScreen = () => {
         return;
       }
 
-      // If no stored status, enable AI agent by default on app startup
-      console.log('🔧 fetchAIAgentStatus: No stored status, enabling AI agent by default on app startup');
-      await enableAIAgentInBackground();
+      // If no stored status, set AI agent to inactive by default
+      console.log('🔧 fetchAIAgentStatus: No stored status, setting AI agent to inactive by default');
+      setAiAgentStatus('inactive');
+      setGlobalAgentEnabled(false);
+      await AsyncStorage.setItem('aiAgentStatus', 'inactive');
       setIsInitialized(true);
       return;
 

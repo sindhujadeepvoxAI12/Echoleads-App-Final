@@ -54,7 +54,9 @@ export default function RootLayout() {
       Notifications.addNotificationResponseReceivedListener((response) => {
         console.log("📲 Notification tapped:", response);
         const data = response.notification.request.content.data;
-        if (data?.chatId) router.push(`/chat/${data.chatId}`);
+        // Navigate to LiveChat tab for any notification (with or without chatId)
+        // This ensures users always land on the chat interface when tapping notifications
+        router.push('/(tabs)/LiveChat');
       });
 
     return () => {

@@ -1111,12 +1111,30 @@ const LiveChatScreen = () => {
         console.log('🔧 loadInitialAIAgentStatus: Loading stored status:', storedStatus);
         setAiAgentStatus(storedStatus);
         setGlobalAgentEnabled(storedStatus === 'active');
+        
+        // Also sync with API to ensure backend is in sync
+        try {
+          console.log('🔧 loadInitialAIAgentStatus: Syncing with API to ensure backend is in sync');
+          await chatAPI.updateAIAgentStatus(storedStatus);
+          console.log('🔧 loadInitialAIAgentStatus: Successfully synced with API');
+        } catch (apiError) {
+          console.log('⚠️ loadInitialAIAgentStatus: API sync failed, but continuing with stored status:', apiError.message);
+        }
       } else {
         console.log('🔧 loadInitialAIAgentStatus: No stored status, setting AI agent to inactive by default');
         // Set AI agent to inactive by default - user can enable it manually via toggle
         setAiAgentStatus('inactive');
         setGlobalAgentEnabled(false);
         await AsyncStorage.setItem('aiAgentStatus', 'inactive');
+        
+        // Also sync with API to ensure backend is in sync
+        try {
+          console.log('🔧 loadInitialAIAgentStatus: Syncing inactive status with API');
+          await chatAPI.updateAIAgentStatus('inactive');
+          console.log('🔧 loadInitialAIAgentStatus: Successfully synced inactive status with API');
+        } catch (apiError) {
+          console.log('⚠️ loadInitialAIAgentStatus: API sync failed, but continuing with inactive status:', apiError.message);
+        }
       }
     } catch (error) {
       console.error('❌ Error loading initial AI agent status:', error);
@@ -1138,7 +1156,14 @@ const LiveChatScreen = () => {
 
       // First check if we already have a valid status and don't need to fetch
       if (aiAgentStatus === 'active' || aiAgentStatus === 'inactive') {
-        console.log('🔧 fetchAIAgentStatus: Current status is valid, skipping API call to preserve user setting');
+        console.log('🔧 fetchAIAgentStatus: Current status is valid, syncing with API to ensure backend is in sync');
+        // Sync with API to ensure backend is in sync with our local state
+        try {
+          await chatAPI.updateAIAgentStatus(aiAgentStatus);
+          console.log('🔧 fetchAIAgentStatus: Successfully synced current status with API');
+        } catch (apiError) {
+          console.log('⚠️ fetchAIAgentStatus: API sync failed, but continuing with current status:', apiError.message);
+        }
         setIsInitialized(true);
         return;
       }
@@ -1146,9 +1171,17 @@ const LiveChatScreen = () => {
       // Check if we have a stored status first
       const storedStatus = await AsyncStorage.getItem('aiAgentStatus');
       if (storedStatus) {
-        console.log('🔧 fetchAIAgentStatus: Using stored status, skipping API call:', storedStatus);
+        console.log('🔧 fetchAIAgentStatus: Using stored status and syncing with API:', storedStatus);
         setAiAgentStatus(storedStatus);
         setGlobalAgentEnabled(storedStatus === 'active');
+        
+        // Sync with API to ensure backend is in sync
+        try {
+          await chatAPI.updateAIAgentStatus(storedStatus);
+          console.log('🔧 fetchAIAgentStatus: Successfully synced stored status with API');
+        } catch (apiError) {
+          console.log('⚠️ fetchAIAgentStatus: API sync failed, but continuing with stored status:', apiError.message);
+        }
         setIsInitialized(true);
         return;
       }
@@ -1158,6 +1191,14 @@ const LiveChatScreen = () => {
       setAiAgentStatus('inactive');
       setGlobalAgentEnabled(false);
       await AsyncStorage.setItem('aiAgentStatus', 'inactive');
+      
+      // Sync with API to ensure backend is in sync
+      try {
+        await chatAPI.updateAIAgentStatus('inactive');
+        console.log('🔧 fetchAIAgentStatus: Successfully synced inactive status with API');
+      } catch (apiError) {
+        console.log('⚠️ fetchAIAgentStatus: API sync failed, but continuing with inactive status:', apiError.message);
+      }
       setIsInitialized(true);
       return;
 

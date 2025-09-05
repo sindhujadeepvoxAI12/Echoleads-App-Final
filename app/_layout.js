@@ -20,12 +20,45 @@ import {
 // import { chatAPI } from "./services/chatService";
 import Constants from "expo-constants";
 import whatsappMessagingService from "./services/whatsappMessagingService";
+import { chatAPI } from "./services/chatService";
 
 export default function RootLayout() {
   const [expoPushToken, setExpoPushToken] = useState("");
   const notificationListener = useRef(null);
   const responseListener = useRef(null);
   const router = useRouter();
+
+  // Function to ensure AI agent is enabled on app startup
+  const ensureAIAgentEnabledOnStartup = async () => {
+    try {
+      console.log('🤖 App startup: Ensuring AI agent is enabled...');
+      
+      // Check if AI agent is already enabled
+      const storedStatus = await AsyncStorage.getItem('aiAgentStatus');
+      if (storedStatus === 'active') {
+        console.log('🤖 App startup: AI agent already enabled, skipping');
+        return;
+      }
+      
+      // Enable AI agent on app startup
+      const response = await chatAPI.updateAIAgentStatus('active');
+      
+      if (response && (
+        response.status === true ||
+        response.status === 'success' ||
+        response.message ||
+        response.data ||
+        response.disable_ai_agent !== undefined ||
+        response.fallback === true
+      )) {
+        // Store in AsyncStorage
+        await AsyncStorage.setItem('aiAgentStatus', 'active');
+        console.log('🤖 App startup: AI agent enabled successfully');
+      }
+    } catch (error) {
+      console.error('❌ App startup: Error ensuring AI agent enabled:', error);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -40,8 +73,11 @@ export default function RootLayout() {
         if (Constants.appOwnership !== "expo") {
           await whatsappMessagingService.initialize();
         }
+
+        // Ensure AI agent is enabled on app startup
+        await ensureAIAgentEnabledOnStartup();
       } catch (e) {
-        console.log("WhatsApp background service init failed:", e?.message);
+        console.log("App initialization failed:", e?.message);
       }
     })();
 

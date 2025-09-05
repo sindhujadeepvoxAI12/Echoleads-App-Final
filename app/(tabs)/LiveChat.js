@@ -770,10 +770,19 @@ const LiveChatScreen = () => {
       console.log('📱 App going to background');
 
       try {
+        // Save current AI agent status when going to background
         await AsyncStorage.setItem('liveChatState', JSON.stringify({
           wasInChat: !!selectedChat,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          aiAgentStatus: aiAgentStatus,
+          globalAgentEnabled: globalAgentEnabled
         }));
+        
+        // Ensure AI agent is enabled when app goes to background
+        if (!globalAgentEnabled) {
+          console.log('🤖 App going to background - enabling AI agent automatically');
+          await enableAIAgentInBackground();
+        }
       } catch (error) {
         console.log('📱 Error saving app state:', error);
       }
@@ -782,6 +791,10 @@ const LiveChatScreen = () => {
     // If app is coming back to foreground, check token and refresh if needed
     if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
       console.log('📱 App returned to foreground');
+
+      // Enable AI agent when app comes to foreground
+      console.log('🤖 App returned to foreground - ensuring AI agent is enabled');
+      await ensureAIAgentEnabled();
 
       // Only check authentication if component is mounted
       if (!isMounted) {
@@ -853,6 +866,59 @@ const LiveChatScreen = () => {
     setAgentNotificationMessage(message);
     setShowAgentNotification(true);
     setTimeout(() => setShowAgentNotification(false), duration);
+  };
+
+  // Function to enable AI agent in background without UI updates
+  const enableAIAgentInBackground = async () => {
+    try {
+      console.log('🤖 enableAIAgentInBackground: Enabling AI agent in background...');
+      
+      // Call the API to enable AI agent
+      const response = await chatAPI.updateAIAgentStatus('active');
+      
+      if (response && (
+        response.status === true ||
+        response.status === 'success' ||
+        response.message ||
+        response.data ||
+        response.disable_ai_agent !== undefined ||
+        response.fallback === true
+      )) {
+        // Update local state silently
+        setGlobalAgentEnabled(true);
+        setAiAgentStatus('active');
+        
+        // Store in AsyncStorage
+        await AsyncStorage.setItem('aiAgentStatus', 'active');
+        
+        // Update UI state
+        updateChatsAgentStatus(true);
+        
+        console.log('🤖 enableAIAgentInBackground: AI agent enabled successfully in background');
+      }
+    } catch (error) {
+      console.error('❌ enableAIAgentInBackground: Error enabling AI agent in background:', error);
+    }
+  };
+
+  // Function to ensure AI agent is enabled (for app startup and foreground)
+  const ensureAIAgentEnabled = async () => {
+    try {
+      console.log('🤖 ensureAIAgentEnabled: Ensuring AI agent is enabled...');
+      
+      // Check current status
+      if (globalAgentEnabled && aiAgentStatus === 'active') {
+        console.log('🤖 ensureAIAgentEnabled: AI agent already enabled, skipping');
+        return;
+      }
+      
+      // Enable AI agent
+      await enableAIAgentInBackground();
+      
+      console.log('🤖 ensureAIAgentEnabled: AI agent status ensured');
+    } catch (error) {
+      console.error('❌ ensureAIAgentEnabled: Error ensuring AI agent enabled:', error);
+    }
   };
 
 
@@ -1045,10 +1111,14 @@ const LiveChatScreen = () => {
         setAiAgentStatus(storedStatus);
         setGlobalAgentEnabled(storedStatus === 'active');
       } else {
-        console.log('🔧 loadInitialAIAgentStatus: No stored status, keeping defaults');
+        console.log('🔧 loadInitialAIAgentStatus: No stored status, enabling AI agent by default on app startup');
+        // Enable AI agent by default on app startup
+        await enableAIAgentInBackground();
       }
     } catch (error) {
       console.error('❌ Error loading initial AI agent status:', error);
+      // On error, still try to enable AI agent by default
+      await enableAIAgentInBackground();
     }
   };
 
@@ -1073,6 +1143,12 @@ const LiveChatScreen = () => {
         setIsInitialized(true);
         return;
       }
+
+      // If no stored status, enable AI agent by default on app startup
+      console.log('🔧 fetchAIAgentStatus: No stored status, enabling AI agent by default on app startup');
+      await enableAIAgentInBackground();
+      setIsInitialized(true);
+      return;
 
       // First try to get status from API
       try {
@@ -2030,8 +2106,46 @@ const LiveChatScreen = () => {
 
       if (direct) {
         console.log('📩 lastmsg (direct):', payload);
+        
+        // Check if AI agent is enabled and trigger response for incoming user messages
+        if (globalAgentEnabled && direct.is_incoming_message === 1) {
+          console.log('🤖 AI Agent enabled - new user message received via lastmsg, triggering response...');
+          
+          // Find the chat to respond to
+          const targetChat = chats.find(c => c.uid === payload.uid);
+          if (targetChat) {
+            // Trigger AI response after a short delay
+            setTimeout(async () => {
+              try {
+                console.log('🤖 Triggering AI response for new user message via lastmsg...');
+                await checkAndRespondToMissedMessages(targetChat);
+              } catch (error) {
+                console.error('❌ Error triggering AI response for new message via lastmsg:', error);
+              }
+            }, 1000); // Wait 1 second for the message to be processed
+          }
+        }
       } else if (envelope) {
         console.log('📩 lastmsg (envelope):', payload);
+        
+        // Check if AI agent is enabled and trigger response for incoming user messages
+        if (globalAgentEnabled && envelope.is_incoming_message === 1) {
+          console.log('🤖 AI Agent enabled - new user message received via lastmsg envelope, triggering response...');
+          
+          // Find the chat to respond to
+          const targetChat = chats.find(c => c.uid === payload.uid);
+          if (targetChat) {
+            // Trigger AI response after a short delay
+            setTimeout(async () => {
+              try {
+                console.log('🤖 Triggering AI response for new user message via lastmsg envelope...');
+                await checkAndRespondToMissedMessages(targetChat);
+              } catch (error) {
+                console.error('❌ Error triggering AI response for new message via lastmsg envelope:', error);
+              }
+            }, 1000); // Wait 1 second for the message to be processed
+          }
+        }
       } else {
         console.log('ℹ️ lastmsg (unknown shape):', payload);
       }
@@ -2042,6 +2156,25 @@ const LiveChatScreen = () => {
       setMessagess(payload);
       appendIfHasMessages(payload);
       // upsertAndBumpChatFromIncoming(payload);
+
+      // Check if AI agent is enabled and trigger response for incoming user messages
+      if (globalAgentEnabled && payload.is_incoming_message === 1) {
+        console.log('🤖 AI Agent enabled - new user message received, triggering response...');
+        
+        // Find the chat to respond to
+        const targetChat = chats.find(c => c.uid === payload.uid);
+        if (targetChat) {
+          // Trigger AI response after a short delay
+          setTimeout(async () => {
+            try {
+              console.log('🤖 Triggering AI response for new user message...');
+              await checkAndRespondToMissedMessages(targetChat);
+            } catch (error) {
+              console.error('❌ Error triggering AI response for new message:', error);
+            }
+          }, 1000); // Wait 1 second for the message to be processed
+        }
+      }
     });
 
     newSocket.on('typing', (data) => {

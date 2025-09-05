@@ -932,8 +932,8 @@ const DashboardScreen = () => {
   };
 
   const handleAddCredits = () => {
-    // Navigate to purchase page
-    router.push('/(tabs)/Purchase');
+    // Purchase page is temporarily disabled
+    Alert.alert('Coming Soon', 'Purchase functionality is temporarily disabled');
   };
 
 
@@ -1000,7 +1000,7 @@ const DashboardScreen = () => {
         <CleanCreditsSection
           credits={credits}
           onAddCredits={handleAddCredits}
-          onPurchase={() => router.push('/(tabs)/Purchase')}
+          onPurchase={() => Alert.alert('Coming Soon', 'Purchase functionality is temporarily disabled')}
         />
 
         <View style={styles.bottomPadding} />

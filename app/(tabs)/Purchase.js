@@ -1,3 +1,5 @@
+// Purchase screen temporarily disabled
+/*
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -654,6 +656,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FF9500',
+  },
+});
+
+export default PurchasePage;
+*/
+
+// Placeholder component for disabled Purchase screen
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+
+const PurchasePage = () => {
+  return (
+    <View style={styles.container}>
+      <Text style={styles.text}>Purchase screen is temporarily disabled</Text>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+  },
+  text: {
+    fontSize: 16,
+    color: '#666666',
   },
 });
 

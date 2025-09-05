@@ -100,9 +100,10 @@ export default function TabLayout() {
         }}
       />
       
-      {/* <Tabs.Screen
+      <Tabs.Screen
         name="Purchase"
         options={{
+          href: null, // This hides the tab from the tab bar
           title: 'Purchase',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons 
@@ -112,7 +113,7 @@ export default function TabLayout() {
             />
           ),
         }}
-      /> */}
+      /> 
       
       <Tabs.Screen
         name="LiveChat"

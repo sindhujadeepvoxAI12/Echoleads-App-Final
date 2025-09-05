@@ -720,6 +720,10 @@ const LiveChatScreen = () => {
   const [globalAgentEnabled, setGlobalAgentEnabled] = useState(false); // Will be loaded from AsyncStorage
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [backgroundLoading, setBackgroundLoading] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [lastRefreshTime, setLastRefreshTime] = useState(null);
+  const [refreshInterval, setRefreshInterval] = useState(null);
 
   const flatListRef = useRef(null);
   const insets = useSafeAreaInsets();
@@ -989,57 +993,56 @@ const LiveChatScreen = () => {
 
 
 
-  // Fetch chat list from API
-  const fetchChatList = async () => {
+  // Smart background refresh function
+  const smartBackgroundRefresh = async (isBackground = false) => {
     try {
-      setLoading(true);
+      if (isBackground) {
+        setBackgroundLoading(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
 
-      console.log('🔍 fetchChatList: Starting to fetch chat list...');
+      console.log('🔄 Smart refresh: Starting background refresh...');
       const response = await chatAPI.getChatList();
-      console.log('🔍 fetchChatList: Raw API response:', response);
+      console.log('🔄 Smart refresh: Raw API response:', response);
 
       // Check for authentication errors
       if (response && response.requiresAuth) {
-        console.error('❌ fetchChatList: Authentication required, redirecting to login');
-        Alert.alert(
-          'Authentication Required',
-          'Your session has expired. Please log in again.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Clear any stored credentials
-                AsyncStorage.removeItem('authToken');
-                AsyncStorage.removeItem('tokenExpiresAt');
-                AsyncStorage.removeItem('userCredentials');
-                // Redirect to login
-                router.replace('/login');
+        console.error('❌ Smart refresh: Authentication required, redirecting to login');
+        if (!isBackground) {
+          Alert.alert(
+            'Authentication Required',
+            'Your session has expired. Please log in again.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  // Clear any stored credentials
+                  AsyncStorage.removeItem('authToken');
+                  AsyncStorage.removeItem('tokenExpiresAt');
+                  AsyncStorage.removeItem('userCredentials');
+                  // Redirect to login
+                  router.replace('/login');
+                }
               }
-            }
-          ]
-        );
+            ]
+          );
+        }
         return;
       }
 
       // Transform API response to match your existing chat structure
       const transformedChats = response.data || response.chats || response || [];
-      console.log('🔍 fetchChatList: Transformed chats:', transformedChats);
+      console.log('🔄 Smart refresh: Transformed chats:', transformedChats);
 
       // Ensure we have an array and filter out invalid items
       const validChats = Array.isArray(transformedChats) ? transformedChats.filter(chat => {
         const hasValidId = chat && (chat.id || chat.chat_id || chat.uid);
-        console.log('🔍 fetchChatList: Chat validation:', {
-          chat: chat?.name || chat?.phone,
-          id: chat?.id,
-          chat_id: chat?.chat_id,
-          uid: chat?.uid,
-          isValid: hasValidId
-        });
         return hasValidId;
       }) : [];
 
-      console.log('🔍 fetchChatList: Valid chats count:', validChats.length);
+      console.log('🔄 Smart refresh: Valid chats count:', validChats.length);
 
       // Map API data to your chat structure
       const mappedChats = validChats.map((chat, index) => {
@@ -1064,40 +1067,42 @@ const LiveChatScreen = () => {
           messages: chat.messages || []
         };
 
-        console.log('🔍 fetchChatList: Mapped chat:', {
-          name: mappedChat.name,
-          phone: mappedChat.phone,
-          id: mappedChat.id,
-          uid: mappedChat.uid,
-          chat_id: mappedChat.chat_id
-        });
-
         return mappedChat;
       });
 
-      console.log('🔍 fetchChatList: Final mapped chats:', mappedChats);
+      console.log('🔄 Smart refresh: Final mapped chats:', mappedChats);
 
-      // Set chats state
-      if (mappedChats.length > 0) {
+      // Only update state if we have chats or if this is not a background refresh
+      if (mappedChats.length > 0 || !isBackground) {
         setChats(mappedChats);
-        console.log('✅ fetchChatList: Successfully set', mappedChats.length, 'chats');
+        console.log('✅ Smart refresh: Successfully set', mappedChats.length, 'chats');
       } else {
-        setChats([]);
-        console.log('⚠️ fetchChatList: No chats found');
+        console.log('🔄 Smart refresh: No new chats in background refresh, keeping existing data');
       }
 
       // Mark that data has been loaded successfully
       setHasLoadedData(true);
+      setLastRefreshTime(Date.now());
 
     } catch (error) {
-      console.error('❌ fetchChatList: Error:', error);
-      setError('Failed to load chats. Please try again.');
-
-      // Don't use mock data, just set empty array
-      setChats([]);
+      console.error('❌ Smart refresh: Error:', error);
+      if (!isBackground) {
+        setError('Failed to load chats. Please try again.');
+        setChats([]);
+      }
     } finally {
-      setLoading(false);
+      if (isBackground) {
+        setBackgroundLoading(false);
+      } else {
+        setLoading(false);
+        setIsInitialLoad(false);
+      }
     }
+  };
+
+  // Fetch chat list from API (wrapper for backward compatibility)
+  const fetchChatList = async () => {
+    return smartBackgroundRefresh(false);
   };
 
 
@@ -1276,6 +1281,7 @@ const LiveChatScreen = () => {
     // Mark component as mounted
     setIsMounted(true);
 
+
     // Set up periodic token refresh (every 10 minutes)
     const tokenRefreshInterval = setInterval(async () => {
       try {
@@ -1336,7 +1342,10 @@ const LiveChatScreen = () => {
       subscription?.remove();
       // Clear token refresh interval
       clearInterval(tokenRefreshInterval);
-
+      // Clear smart refresh interval
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
     };
   }, []);
 
@@ -3193,6 +3202,56 @@ const LiveChatScreen = () => {
     };
   }, []);
 
+  // Set up smart refresh when data is loaded
+  useEffect(() => {
+    if (hasLoadedData && isMounted) {
+      console.log('🔄 Setting up smart refresh after data load');
+      
+      // Set up smart refresh with intelligent intervals
+      const setupSmartRefresh = () => {
+        // Clear any existing interval
+        if (refreshInterval) {
+          clearInterval(refreshInterval);
+        }
+
+        // Set up background refresh based on app state and user activity
+        const interval = setInterval(async () => {
+          try {
+            // Only refresh if component is mounted and app is active
+            if (!isMounted || !hasLoadedData || appState !== 'active') {
+              console.log('🔄 Smart refresh: Skipping - component not ready or app not active');
+              return;
+            }
+
+            // Check if enough time has passed since last refresh
+            const timeSinceLastRefresh = lastRefreshTime ? Date.now() - lastRefreshTime : Infinity;
+            const minRefreshInterval = 30000; // 30 seconds minimum
+
+            if (timeSinceLastRefresh < minRefreshInterval) {
+              console.log('🔄 Smart refresh: Skipping - too soon since last refresh');
+              return;
+            }
+
+            console.log('🔄 Smart refresh: Starting background refresh...');
+            await smartBackgroundRefresh(true);
+          } catch (error) {
+            console.error('❌ Smart refresh: Error during background refresh:', error);
+          }
+        }, 15000); // Check every 15 seconds
+
+        setRefreshInterval(interval);
+      };
+
+      setupSmartRefresh();
+    }
+
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [hasLoadedData, isMounted, appState]);
+
   // Removed manual refresh handler per request
 
   // Helper function to check if there are actual new messages
@@ -3828,9 +3887,30 @@ const LiveChatScreen = () => {
             </View>
           ) : filteredChats.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No chats found</Text>
-              <Text style={styles.emptySubtext}>Start a conversation to see chats here</Text>
-
+              {isInitialLoad ? (
+                <>
+                  <ActivityIndicator size="large" color="#FF9500" />
+                  <Text style={styles.emptyText}>Loading your chats...</Text>
+                  <Text style={styles.emptySubtext}>Please wait while we fetch your conversations</Text>
+                </>
+              ) : backgroundLoading ? (
+                <>
+                  <ActivityIndicator size="large" color="#FF9500" />
+                  <Text style={styles.emptyText}>Checking for new chats...</Text>
+                  <Text style={styles.emptySubtext}>Looking for new conversations</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.emptyText}>Ready for new chats</Text>
+                  <Text style={styles.emptySubtext}>New conversations will appear here automatically</Text>
+                  {backgroundLoading && (
+                    <View style={styles.backgroundLoadingIndicator}>
+                      <ActivityIndicator size="small" color="#FF9500" />
+                      <Text style={styles.backgroundLoadingText}>Checking for updates...</Text>
+                    </View>
+                  )}
+                </>
+              )}
             </View>
           ) : (
             <FlatList
@@ -5184,6 +5264,23 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
     marginBottom: 20,
+  },
+  backgroundLoadingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255, 149, 0, 0.1)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 149, 0, 0.3)',
+  },
+  backgroundLoadingText: {
+    fontSize: 12,
+    color: '#FF9500',
+    marginLeft: 8,
+    fontWeight: '500',
   },
 
   // Empty messages styles

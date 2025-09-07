@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Base API configuration
-const API_BASE_URL = 'https://beta.echoleads.ai/api';
+const API_BASE_URL = 'https://agents.echoleads.ai/api';
 
 // Create axios instance with default config
 const api = axios.create({

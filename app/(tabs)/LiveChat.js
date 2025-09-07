@@ -4,6 +4,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { AppState } from 'react-native';
 import {
   View,
@@ -35,7 +36,6 @@ import {
   Smile,
   MoreVertical,
   Phone,
-  Video,
   Search,
   ArrowLeft,
   Bot,
@@ -61,6 +61,8 @@ import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { chatAPI } from '../services/chatService';
 import { authAPI } from '../services/authService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../../contexts/AuthContext';
+import { useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { StatusBar } from 'expo-status-bar';
@@ -557,27 +559,6 @@ const MessageBubble = ({ message, isUser, index }) => {
           conditionalStyle: isUserMessage ? 'userMessage' : 'agentMessage',
           finalStyles: [styles.messageBubble, isUserMessage ? styles.userMessage : styles.agentMessage]
         })} */}
-        {/* AI Icon Logic: Only show for system/agent messages that were sent when AI agent was enabled */}
-        {message.isAI === true && message.aiStatusAtSend === true && isUserMessage && (
-          <View
-            style={[
-              styles.aiIndicator,
-              {
-                shadowOpacity: 0.5,
-                shadowRadius: 4,
-              }
-            ]}
-          >
-            <ExpoLinearGradient
-              colors={['#FF9500', '#FF6B35', '#FF4500']}
-              style={styles.aiIndicatorGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Bot size={12} color="#fff" />
-            </ExpoLinearGradient>
-          </View>
-        )}
 
         <Text style={[
           styles.messageText,
@@ -591,17 +572,55 @@ const MessageBubble = ({ message, isUser, index }) => {
           <View style={styles.attachmentsContainer}>
             {message.attachments.map((attachment, index) => (
               <View key={index} style={styles.attachmentItem}>
-                <Text style={styles.attachmentTypeLabel}>
-                  {attachment.type === 'image' ? 'IMG' :
-                    attachment.type === 'folder' ? 'FOLDER' : 'FILE'}
-                </Text>
+                <View style={styles.attachmentIconContainer}>
+                  {attachment.type === 'image' ? (
+                    <View style={styles.imageIcon}>
+                      <View style={styles.imageIconSquare} />
+                      <View style={styles.imageIconMountain} />
+                      <View style={styles.imageIconSun} />
+                    </View>
+                  ) : attachment.type === 'document' ? (
+                    <View style={styles.documentIcon}>
+                      <View style={styles.documentIconPaper} />
+                      <View style={styles.documentIconFold} />
+                    </View>
+                  ) : attachment.type === 'archive' ? (
+                    <View style={styles.archiveIcon}>
+                      <View style={styles.archiveIconSquare} />
+                      <View style={styles.archiveIconLines} />
+                    </View>
+                  ) : attachment.type === 'folder' ? (
+                    <View style={styles.folderIcon}>
+                      <View style={styles.folderIconSquare} />
+                      <View style={styles.folderIconFold} />
+                    </View>
+                  ) : (
+                    <View style={styles.fileIcon}>
+                      <View style={styles.fileIconSquare} />
+                      <View style={styles.fileIconLines} />
+                    </View>
+                  )}
+                </View>
                 <View style={styles.attachmentInfo}>
                   <Text style={styles.attachmentName} numberOfLines={1} ellipsizeMode="tail">
                     {attachment.name}
                   </Text>
-                  <Text style={styles.attachmentSize}>
-                    {attachment.size ? formatFileSize(attachment.size) : 'Unknown size'}
+                  <Text style={styles.attachmentTypeText}>
+                    {attachment.type === 'image' ? 'Image' :
+                     attachment.type === 'document' ? 'Document' :
+                     attachment.type === 'archive' ? 'Archive' :
+                     attachment.type === 'folder' ? 'Folder' : 'File'}
                   </Text>
+                  {attachment.url && (
+                    <Text style={styles.attachmentUrl} numberOfLines={1} ellipsizeMode="tail">
+                      {attachment.url}
+                    </Text>
+                  )}
+                  {attachment.size && (
+                    <Text style={styles.attachmentSize}>
+                      {formatFileSize(attachment.size)}
+                    </Text>
+                  )}
                 </View>
               </View>
             ))}
@@ -708,11 +727,47 @@ const AgentNotification = ({ visible, message, onClose }) => {
 
 // Main LiveChat Screen
 const LiveChatScreen = () => {
+  const router = useRouter();
+  const navigation = useNavigation();
+  const { logout, isAuthenticated, isLoading } = useAuth();
+  
   const [chats, setChats] = useState([]);
   console.log(chats, "chats>>")
   const [selectedChat, setSelectedChat] = useState(null);
   console.log(selectedChat, "selectedChat>>")
   const [activeCategory, setActiveCategory] = useState('all'); // 'all' or 'mine'
+  
+  // Hide/show tab bar based on chat selection
+  useEffect(() => {
+    if (selectedChat) {
+      // Hide tab bar when chat is selected
+      navigation.setOptions({
+        tabBarStyle: { display: 'none' }
+      });
+    } else {
+      // Show tab bar when no chat is selected
+      navigation.setOptions({
+        tabBarStyle: {
+          backgroundColor: '#ffffff',
+          borderTopWidth: 1,
+          borderTopColor: '#f0f0f0',
+          paddingBottom: 10,
+          paddingTop: 8,
+          height: 74,
+          elevation: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+          zIndex: 1000,
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+        }
+      });
+    }
+  }, [selectedChat, navigation]);
   const [isAdmin, setIsAdmin] = useState(true); // Change this to false for regular users
   const [searchQuery, setSearchQuery] = useState('');
   const [showAgentNotification, setShowAgentNotification] = useState(false);
@@ -1465,6 +1520,12 @@ const LiveChatScreen = () => {
       const text = msg.text || msg.message || msg.body || msg.content || '';
       // Use created_at as primary timestamp, fallback to updated_at, then other fields
       const timestamp = msg.created_at || msg.updated_at || msg.time || msg.timestamp || new Date();
+      
+      // Extract message type and file information
+      const messageType = msg.message_type || msg.type || 'text';
+      const filePath = msg.file_path || msg.file_url || msg.url || null;
+      const fileName = msg.file_name || msg.name || null;
+      const fileSize = msg.file_size || msg.size || null;
 
       // Log the raw message for debugging
       console.log(`🔍 Message ${index}:`, {
@@ -1579,6 +1640,9 @@ const LiveChatScreen = () => {
 
       console.log(`🔍 Message ${index} final classification:`, {
         text: String(text).substring(0, 50),
+        messageType,
+        filePath: filePath ? 'Present' : 'None',
+        fileName,
         isSystemOrAgent,
         isUserMessage,
         isCustomerMessage,
@@ -1587,9 +1651,56 @@ const LiveChatScreen = () => {
         willShowAI: finalShouldShowAI
       });
 
+      // Create display text and attachments based on message type
+      let displayText = String(text);
+      let attachments = [];
+
+      // Handle different message types
+      if (messageType === 'image' && filePath) {
+        displayText = text || 'Image';
+        attachments = [{
+          type: 'image',
+          name: fileName || 'Image',
+          url: filePath,
+          size: fileSize
+        }];
+      } else if (messageType === 'document' && filePath) {
+        displayText = text || 'Document';
+        attachments = [{
+          type: 'document',
+          name: fileName || 'Document',
+          url: filePath,
+          size: fileSize
+        }];
+      } else if (messageType === 'archive' && filePath) {
+        displayText = text || 'Archive';
+        attachments = [{
+          type: 'archive',
+          name: fileName || 'Archive',
+          url: filePath,
+          size: fileSize
+        }];
+      } else if (messageType === 'file' && filePath) {
+        displayText = text || 'File';
+        attachments = [{
+          type: 'file',
+          name: fileName || 'File',
+          url: filePath,
+          size: fileSize
+        }];
+      } else if (messageType === 'folder' && filePath) {
+        displayText = text || 'Folder';
+        attachments = [{
+          type: 'folder',
+          name: fileName || 'Folder',
+          url: filePath,
+          size: fileSize
+        }];
+      }
+
       return {
         id: msg.id || msg.message_id || msg.uuid || `msg-${index}-${Date.now()}`,
-        text: String(text),
+        text: displayText,
         sender: messageSender,
         timestamp: formatTimestamp(timestamp),
         createdAt: new Date(timestamp),
@@ -1598,7 +1709,12 @@ const LiveChatScreen = () => {
         updated_at: msg.updated_at || msg.created_at || timestamp,
         isAI: finalShouldShowAI, // Only show AI badge on confirmed system/agent messages
         aiStatusAtSend: isAgentEnabled, // Store AI agent status when message was classified
-        status: msg.status || 'read'
+        status: msg.status || 'read',
+        // Add message type and attachments for proper rendering
+        messageType: messageType,
+        attachments: attachments,
+        filePath: filePath,
+        fileName: fileName
       };
     });
   };
@@ -1671,21 +1787,38 @@ const LiveChatScreen = () => {
     console.log('🔍 ChatInput: Input blurred');
   };
 
-  // File attachment functions
-  const pickImages = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'image/*',
-        multiple: true,
-        copyToCacheDirectory: true,
-      });
+  // File validation function
+  const validateFile = (file) => {
+    const maxSize = 50 * 1024 * 1024; // 50MB limit
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff', 'image/svg+xml',
+      'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'text/plain', 'application/rtf', 'application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed'
+    ];
 
-      if (!result.canceled && result.assets) {
-        const imageFiles = result.assets.map(asset => {
-          // Auto-detect MIME type from file extension if not provided
-          let detectedMimeType = asset.mimeType;
-          if (!detectedMimeType && asset.name) {
-            const extension = asset.name.split('.').pop()?.toLowerCase();
+    if (file.size && file.size > maxSize) {
+      return { valid: false, error: `File size exceeds 50MB limit. Current size: ${formatFileSize(file.size)}` };
+    }
+
+    if (file.mimeType && !allowedTypes.includes(file.mimeType) && !file.mimeType.startsWith('image/')) {
+      return { valid: false, error: `File type not supported: ${file.mimeType}` };
+    }
+
+    return { valid: true };
+  };
+
+  // Enhanced file type detection function
+  const detectFileType = (fileName, mimeType) => {
+    const extension = fileName?.split('.').pop()?.toLowerCase() || '';
+    let detectedMimeType = mimeType;
+    let detectedType = 'file';
+
+    // Image formats
+    if (mimeType?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'svg', 'ico', 'heic', 'heif'].includes(extension)) {
+      detectedType = 'image';
+      if (!detectedMimeType) {
             switch (extension) {
               case 'jpg':
               case 'jpeg':
@@ -1703,26 +1836,153 @@ const LiveChatScreen = () => {
               case 'bmp':
                 detectedMimeType = 'image/bmp';
                 break;
+          case 'tiff':
+            detectedMimeType = 'image/tiff';
+            break;
+          case 'svg':
+            detectedMimeType = 'image/svg+xml';
+            break;
+          case 'ico':
+            detectedMimeType = 'image/x-icon';
+            break;
+          case 'heic':
+            detectedMimeType = 'image/heic';
+            break;
+          case 'heif':
+            detectedMimeType = 'image/heif';
+                break;
               default:
                 detectedMimeType = 'image/*';
             }
-          }
+      }
+    }
+    // Document formats
+    else if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'odt', 'ods', 'odp'].includes(extension)) {
+      detectedType = 'document';
+      if (!detectedMimeType) {
+        switch (extension) {
+          case 'pdf':
+            detectedMimeType = 'application/pdf';
+            break;
+          case 'doc':
+            detectedMimeType = 'application/msword';
+            break;
+          case 'docx':
+            detectedMimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            break;
+          case 'xls':
+            detectedMimeType = 'application/vnd.ms-excel';
+            break;
+          case 'xlsx':
+            detectedMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            break;
+          case 'ppt':
+            detectedMimeType = 'application/vnd.ms-powerpoint';
+            break;
+          case 'pptx':
+            detectedMimeType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+            break;
+          case 'txt':
+            detectedMimeType = 'text/plain';
+            break;
+          case 'rtf':
+            detectedMimeType = 'application/rtf';
+            break;
+          case 'odt':
+            detectedMimeType = 'application/vnd.oasis.opendocument.text';
+            break;
+          case 'ods':
+            detectedMimeType = 'application/vnd.oasis.opendocument.spreadsheet';
+            break;
+          case 'odp':
+            detectedMimeType = 'application/vnd.oasis.opendocument.presentation';
+            break;
+          default:
+            detectedMimeType = 'application/octet-stream';
+        }
+      }
+    }
+    // Archive formats
+    else if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2'].includes(extension)) {
+      detectedType = 'archive';
+      if (!detectedMimeType) {
+        switch (extension) {
+          case 'zip':
+            detectedMimeType = 'application/zip';
+            break;
+          case 'rar':
+            detectedMimeType = 'application/x-rar-compressed';
+            break;
+          case '7z':
+            detectedMimeType = 'application/x-7z-compressed';
+            break;
+          case 'tar':
+            detectedMimeType = 'application/x-tar';
+            break;
+          case 'gz':
+            detectedMimeType = 'application/gzip';
+            break;
+          case 'bz2':
+            detectedMimeType = 'application/x-bzip2';
+            break;
+          default:
+            detectedMimeType = 'application/octet-stream';
+        }
+      }
+    }
+    // Default fallback
+    else {
+      detectedMimeType = detectedMimeType || 'application/octet-stream';
+      detectedType = 'file';
+    }
 
-          return {
+    return { detectedMimeType, detectedType };
+  };
+
+  // File attachment functions
+  const pickImages = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets) {
+        const validFiles = [];
+        const invalidFiles = [];
+
+        result.assets.forEach(asset => {
+          const { detectedMimeType, detectedType } = detectFileType(asset.name, asset.mimeType);
+          
+          const file = {
             ...asset,
-            mimeType: detectedMimeType || 'image/jpeg',
+            mimeType: detectedMimeType,
             path: asset.name, // Use filename as path
             uri: asset.uri || asset.fileUri, // Ensure URI is available
             name: asset.name || asset.fileName, // Ensure name is available
-            type: 'image' // Explicitly set type for better handling
+            type: detectedType // Use detected type for better handling
           };
+
+          const validation = validateFile(file);
+          if (validation.valid) {
+            validFiles.push(file);
+          } else {
+            invalidFiles.push({ file, error: validation.error });
+          }
         });
 
-        setSelectedFiles(prev => [...prev, ...imageFiles]);
+        if (invalidFiles.length > 0) {
+          const errorMessage = invalidFiles.map(({ file, error }) => `${file.name}: ${error}`).join('\n');
+          Alert.alert('Invalid Files', errorMessage);
+        }
+
+        if (validFiles.length > 0) {
+          setSelectedFiles(prev => [...prev, ...validFiles]);
         setMessageType('image');
         setShowAttachmentMenu(false);
-        console.log('📸 Images selected:', imageFiles);
-        console.log('📸 Image file structure:', imageFiles.map(f => ({
+          console.log('📸 Images selected:', validFiles);
+          console.log('📸 Image file structure:', validFiles.map(f => ({
           name: f.name,
           uri: f.uri,
           mimeType: f.mimeType,
@@ -1731,7 +1991,8 @@ const LiveChatScreen = () => {
           type: f.type
         })));
         console.log('📸 Message type set to:', 'image');
-        console.log('📸 Selected files count:', selectedFiles.length + imageFiles.length);
+          console.log('📸 Selected files count:', selectedFiles.length + validFiles.length);
+        }
       }
     } catch (error) {
       console.error('❌ Error picking images:', error);
@@ -1748,72 +2009,53 @@ const LiveChatScreen = () => {
       });
 
       if (!result.canceled && result.assets) {
-        const docFiles = result.assets.map(asset => {
-          // Auto-detect MIME type and document type from file extension
-          let detectedMimeType = asset.mimeType;
-          let detectedType = 'file';
+        const validFiles = [];
+        const invalidFiles = [];
 
-          if (!detectedMimeType && asset.name) {
-            const extension = asset.name.split('.').pop()?.toLowerCase();
-            switch (extension) {
-              case 'pdf':
-                detectedMimeType = 'application/pdf';
-                detectedType = 'document';
-                break;
-              case 'doc':
-              case 'docx':
-                detectedMimeType = 'application/msword';
-                detectedType = 'document';
-                break;
-              case 'xls':
-              case 'xlsx':
-                detectedMimeType = 'application/vnd.ms-excel';
-                detectedType = 'spreadsheet';
-                break;
-              case 'ppt':
-              case 'pptx':
-                detectedMimeType = 'application/vnd.ms-powerpoint';
-                detectedType = 'presentation';
-                break;
-              case 'txt':
-                detectedMimeType = 'text/plain';
-                detectedType = 'text';
-                break;
-              case 'rtf':
-                detectedMimeType = 'application/rtf';
-                detectedType = 'document';
-                break;
-              default:
-                detectedMimeType = 'application/octet-stream';
-                detectedType = 'file';
-            }
-          }
-
-          return {
+        result.assets.forEach(asset => {
+          const { detectedMimeType, detectedType } = detectFileType(asset.name, asset.mimeType);
+          
+          const file = {
             ...asset,
-            mimeType: detectedMimeType || 'application/octet-stream',
+            mimeType: detectedMimeType,
             path: asset.name, // Use filename as path
             uri: asset.uri || asset.fileUri, // Ensure URI is available
             name: asset.name || asset.fileName, // Ensure name is available
             type: detectedType // Use detected type for better handling
           };
+
+          const validation = validateFile(file);
+          if (validation.valid) {
+            validFiles.push(file);
+          } else {
+            invalidFiles.push({ file, error: validation.error });
+          }
         });
 
-        setSelectedFiles(prev => [...prev, ...docFiles]);
+        if (invalidFiles.length > 0) {
+          const errorMessage = invalidFiles.map(({ file, error }) => `${file.name}: ${error}`).join('\n');
+          Alert.alert('Invalid Files', errorMessage);
+        }
+
+        if (validFiles.length > 0) {
+          setSelectedFiles(prev => [...prev, ...validFiles]);
         setMessageType('file');
         setShowAttachmentMenu(false);
-        console.log('📄 Documents selected:', docFiles);
-        console.log('📄 Document types detected:', docFiles.map(f => ({
+          console.log('📄 Documents selected:', validFiles);
+          console.log('📄 Document types detected:', validFiles.map(f => ({
           name: f.name,
           mimeType: f.mimeType,
           type: f.type
         })));
+        }
       }
     } catch (error) {
       console.error('❌ Error picking documents:', error);
       Alert.alert('Error', 'Failed to pick documents. Please try again.');
     }
   };
+
+
 
   const pickFolder = async () => {
     try {
@@ -1824,70 +2066,45 @@ const LiveChatScreen = () => {
       });
 
       if (!result.canceled && result.assets) {
-        const folderFiles = result.assets.map(asset => {
-          // Auto-detect MIME type and type from file extension
-          let detectedMimeType = asset.mimeType;
-          let detectedType = 'file';
+        const validFiles = [];
+        const invalidFiles = [];
 
-          if (!detectedMimeType && asset.name) {
-            const extension = asset.name.split('.').pop()?.toLowerCase();
-            // Use the same detection logic as pickDocument
-            switch (extension) {
-              case 'pdf':
-                detectedMimeType = 'application/pdf';
-                detectedType = 'document';
-                break;
-              case 'doc':
-              case 'docx':
-                detectedMimeType = 'application/msword';
-                detectedType = 'document';
-                break;
-              case 'xls':
-              case 'xlsx':
-                detectedMimeType = 'application/vnd.ms-excel';
-                detectedType = 'spreadsheet';
-                break;
-              case 'ppt':
-              case 'pptx':
-                detectedMimeType = 'application/vnd.ms-powerpoint';
-                detectedType = 'presentation';
-                break;
-              case 'txt':
-                detectedMimeType = 'text/plain';
-                detectedType = 'text';
-                break;
-              case 'jpg':
-              case 'jpeg':
-              case 'png':
-              case 'gif':
-                detectedMimeType = 'image/*';
-                detectedType = 'image';
-                break;
-              default:
-                detectedMimeType = 'application/octet-stream';
-                detectedType = 'file';
-            }
-          }
-
-          return {
+        result.assets.forEach(asset => {
+          const { detectedMimeType, detectedType } = detectFileType(asset.name, asset.mimeType);
+          
+          const file = {
             ...asset,
-            mimeType: detectedMimeType || 'application/octet-stream',
-            path: asset.name, // Use filename as path
-            uri: asset.uri || asset.fileUri, // Ensure URI is available
-            name: asset.name || asset.fileName, // Ensure name is available
-            type: detectedType // Use detected type for better handling
+            mimeType: detectedMimeType,
+            path: asset.name,
+            uri: asset.uri || asset.fileUri,
+            name: asset.name || asset.fileName,
+            type: detectedType
           };
+
+          const validation = validateFile(file);
+          if (validation.valid) {
+            validFiles.push(file);
+          } else {
+            invalidFiles.push({ file, error: validation.error });
+          }
         });
 
-        setSelectedFiles(prev => [...prev, ...folderFiles]);
+        if (invalidFiles.length > 0) {
+          const errorMessage = invalidFiles.map(({ file, error }) => `${file.name}: ${error}`).join('\n');
+          Alert.alert('Invalid Files', errorMessage);
+        }
+
+        if (validFiles.length > 0) {
+          setSelectedFiles(prev => [...prev, ...validFiles]);
         setMessageType('folder');
         setShowAttachmentMenu(false);
-        console.log('📁 Folder contents selected:', folderFiles);
-        console.log('📁 Folder file types detected:', folderFiles.map(f => ({
+          console.log('📁 Folder contents selected:', validFiles);
+          console.log('📁 Folder file types detected:', validFiles.map(f => ({
           name: f.name,
           mimeType: f.mimeType,
           type: f.type
         })));
+        }
       }
     } catch (error) {
       console.error('❌ Error picking folder contents:', error);
@@ -1915,25 +2132,24 @@ const LiveChatScreen = () => {
     if (selectedFiles.length > 0) {
       const primaryFile = selectedFiles[0];
       const mimeType = primaryFile.mimeType || primaryFile.type || '';
+      const fileType = primaryFile.type || '';
 
-      if (mimeType.startsWith('image/')) return '🖼️';
-      if (mimeType.startsWith('video/')) return '🎥';
-      if (mimeType.startsWith('audio/')) return '🎵';
-      if (mimeType.includes('pdf')) return '📕';
+      if (mimeType.startsWith('image/') || fileType === 'image') return '🖼️';
+      if (mimeType.includes('pdf') || fileType === 'document') return '📕';
       if (mimeType.includes('document') || mimeType.includes('word')) return '📘';
       if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return '📊';
       if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📽️';
       if (mimeType.includes('text')) return '📝';
+      if (fileType === 'archive') return '🗜️';
     }
 
     // Fallback to messageType parameter
     switch (messageType) {
       case 'image': return '🖼️';
-      case 'video': return '🎥';
-      case 'audio': return '🎵';
       case 'document': return '📘';
       case 'file': return '📄';
       case 'folder': return '📁';
+      case 'archive': return '🗜️';
       default: return '💬';
     }
   };
@@ -1943,23 +2159,24 @@ const LiveChatScreen = () => {
     if (selectedFiles.length > 0) {
       const primaryFile = selectedFiles[0];
       const mimeType = primaryFile.mimeType || primaryFile.type || '';
+      const fileType = primaryFile.type || '';
 
-      if (mimeType.startsWith('image/')) return 'Image';
-      if (mimeType.includes('pdf')) return 'PDF';
+      if (mimeType.startsWith('image/') || fileType === 'image') return 'Image';
+      if (mimeType.includes('pdf') || fileType === 'document') return 'PDF';
       if (mimeType.includes('document') || mimeType.includes('word')) return 'Document';
       if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return 'Spreadsheet';
       if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return 'Presentation';
       if (mimeType.includes('text')) return 'Text File';
+      if (fileType === 'archive') return 'Archive';
     }
 
     // Fallback to messageType parameter
     switch (messageType) {
       case 'image': return 'Image';
-      case 'video': return 'Video';
-      case 'audio': return 'Audio';
       case 'document': return 'Document';
       case 'file': return 'File';
       case 'folder': return 'Folder';
+      case 'archive': return 'Archive';
       default: return 'Text';
     }
   };
@@ -2010,7 +2227,7 @@ const LiveChatScreen = () => {
 
   const SERVER_URL = "https://websocket.echoleads.ai"; // 👈 For Android emulator; change to your server IP
 
-  const whatsappbot_id = "214e139e-245c-5bda0f0eeac8-WB"; // replace with real values
+  const whatsappbot_id = "97c6adbe-6a38-df1f62f88011-WB"; // replace with real values
   // const uid = "8788226091_68ak449230e299";
   // const uid = "1756971867_68b9435bf05a1'";
 
@@ -2022,21 +2239,81 @@ const LiveChatScreen = () => {
   console.log(messagess, "messagess>>")
 
 
-  const transformMessage = (msg) => ({
+  const transformMessage = (msg) => {
+    // Extract message type and file information
+    const messageType = msg.message_type || msg.type || 'text';
+    const filePath = msg.file_path || msg.file_url || msg.url || null;
+    const fileName = msg.file_name || msg.name || null;
+    const fileSize = msg.file_size || msg.size || null;
+    const text = msg.message || msg.text || '';
+
+    // Create display text and attachments based on message type
+    let displayText = String(text);
+    let attachments = [];
+
+    // Handle different message types
+    if (messageType === 'image' && filePath) {
+      displayText = text || 'Image';
+      attachments = [{
+        type: 'image',
+        name: fileName || 'Image',
+        url: filePath,
+        size: fileSize
+      }];
+    } else if (messageType === 'document' && filePath) {
+      displayText = text || 'Document';
+      attachments = [{
+        type: 'document',
+        name: fileName || 'Document',
+        url: filePath,
+        size: fileSize
+      }];
+    } else if (messageType === 'archive' && filePath) {
+      displayText = text || 'Archive';
+      attachments = [{
+        type: 'archive',
+        name: fileName || 'Archive',
+        url: filePath,
+        size: fileSize
+      }];
+    } else if (messageType === 'file' && filePath) {
+      displayText = text || 'File';
+      attachments = [{
+        type: 'file',
+        name: fileName || 'File',
+        url: filePath,
+        size: fileSize
+      }];
+    } else if (messageType === 'folder' && filePath) {
+      displayText = text || 'Folder';
+      attachments = [{
+        type: 'folder',
+        name: fileName || 'Folder',
+        url: filePath,
+        size: fileSize
+      }];
+    }
+
+    return {
     id: msg.id,
-    text: msg.message || '',
+      text: displayText,
     sender: msg.is_incoming_message === 1 ? 'received' : 'user',
     from: 'contact',
     timestamp: msg.created_at || new Date().toISOString(),
     created_at: msg.created_at,
     updated_at: msg.updated_at || msg.created_at,
     is_incoming_message: msg.is_incoming_message ?? 0,
-    message_type: msg.message_type || 'text',
+      message_type: messageType,
     status: msg.status || 'sent',
     whatsappbot_id: msg.whatsappbot_id,
     contacts_id: msg.contacts_id,
     user_id: msg.user_id,
-  });
+      // Add file handling fields
+      attachments: attachments,
+      filePath: filePath,
+      fileName: fileName
+    };
+  };
 
 
   const appendIfHasMessages = (newApiMsg) => {
@@ -3150,6 +3427,41 @@ const LiveChatScreen = () => {
     setError(null);
   };
 
+  // Logout function with proper API logic
+  const handleLogout = async () => {
+    console.log('handleLogout called');
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to logout?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Logout",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              console.log('Logout confirmed, using AuthContext…');
+
+              // Use AuthContext to handle logout
+              const logoutResult = await logout();
+
+              if (logoutResult.success) {
+                console.log('Logout successful via AuthContext');
+                // Navigate to login after successful logout
+                router.replace('/login');
+              } else {
+                throw new Error(logoutResult.error || 'Logout failed');
+              }
+            } catch (error) {
+              console.error('Error during logout:', error);
+              Alert.alert("Error", "Failed to logout. Please try again.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
   // Function to reclassify messages when AI agent status changes
   const reclassifyMessages = useCallback(() => {
     if (selectedChat && selectedChat.messages && selectedChat.messages.length > 0) {
@@ -3620,10 +3932,6 @@ const LiveChatScreen = () => {
 
     // Allowed MIME types from backend mapping
     const allowedMimeTypes = new Set([
-      // audio
-      'audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/amr', 'audio/ogg',
-      // video
-      'video/mp4', 'video/3gp', 'video/mpeg',
       // images
       'image/jpeg', 'image/png', 'image/gif', 'image/webp',
       // documents
@@ -3666,10 +3974,6 @@ const LiveChatScreen = () => {
           // Auto-detect message type for better API integration
           if (detectedType.startsWith('image/')) {
             messageType = 'image';
-          } else if (detectedType.startsWith('video/')) {
-            messageType = 'video';
-          } else if (detectedType.startsWith('audio/')) {
-            messageType = 'audio';
           } else if (detectedType.includes('pdf') || detectedType.includes('document') || detectedType.includes('text')) {
             messageType = 'document';
           }
@@ -3692,8 +3996,6 @@ const LiveChatScreen = () => {
             // Add additional metadata for better handling
             extension: file.name ? file.name.split('.').pop()?.toLowerCase() : '',
             isImage: messageType === 'image',
-            isVideo: messageType === 'video',
-            isAudio: messageType === 'audio',
             isDocument: messageType === 'document'
           };
 
@@ -3718,8 +4020,6 @@ const LiveChatScreen = () => {
             path: file.path || file.name,
             extension: file.name ? file.name.split('.').pop()?.toLowerCase() : '',
             isImage: false,
-            isVideo: false,
-            isAudio: false,
             isDocument: false
           };
 
@@ -3795,21 +4095,13 @@ const LiveChatScreen = () => {
                   )}
                 </TouchableOpacity>
 
-                {/* Close Button */}
+                {/* Logout Button */}
                 <TouchableOpacity
-                  style={styles.closeButton}
-                  onPress={() => {
-                    // Navigate back or close the page
-                    if (selectedChat) {
-                      setSelectedChat(null);
-                    } else {
-                      // Navigate back to Dashboard
-                      router.push('/(tabs)/Dashboard');
-                    }
-                  }}
+                  style={styles.logoutButton}
+                  onPress={handleLogout}
                   activeOpacity={0.7}
                 >
-                  <X size={20} color="#fff" />
+                  <Ionicons name="log-out-outline" size={20} color="#fff" />
                 </TouchableOpacity>
               </View>
             </View>
@@ -3992,7 +4284,7 @@ const LiveChatScreen = () => {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.chatView}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : -40}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
           enabled={true}
         >
           <ChatHeader
@@ -4108,6 +4400,7 @@ const LiveChatScreen = () => {
                     <Text style={styles.attachmentMenuText}>📸 Images</Text>
                   </TouchableOpacity>
 
+
                   <TouchableOpacity
                     style={styles.attachmentMenuItem}
                     onPress={pickDocument}
@@ -4119,7 +4412,7 @@ const LiveChatScreen = () => {
                     style={styles.attachmentMenuItem}
                     onPress={pickFolder}
                   >
-                    <Text style={styles.attachmentMenuText}>📁 Files</Text>
+                    <Text style={styles.attachmentMenuText}>📁 All Files</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -4225,7 +4518,7 @@ const styles = StyleSheet.create({
   chatListView: {
     flex: 1,
     backgroundColor: 'transparent',
-    paddingBottom: 90, // Account for fixed bottom tabs (74px height + 16px padding)
+    paddingBottom: 74, // Account for fixed bottom tabs (74px height)
   },
   chatListHeader: {
     paddingHorizontal: 16,
@@ -4246,8 +4539,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  closeButton: {
-    padding: 8,
+  logoutButton: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
@@ -4466,8 +4760,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 20,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#fff', // White background for input field
     maxHeight: 100,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
   inputEnabled: {
     backgroundColor: '#f0f0f0',
@@ -4538,19 +4834,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
-  aiIndicatorSmall: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#FF4500',
-    borderRadius: 8,
-    padding: 2,
-    shadowColor: '#FF4500',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.6,
-    shadowRadius: 3,
-    elevation: 2,
-  },
   avatarText: {
     fontSize: 16,
     fontWeight: '600',
@@ -4619,6 +4902,7 @@ const styles = StyleSheet.create({
   // Chat View Styles
   chatView: {
     flex: 1,
+    paddingBottom: 0, // Remove any bottom padding that might interfere
   },
   chatHeader: {
     width: '100%',
@@ -4792,7 +5076,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 8,
+    paddingBottom: 0, // Remove bottom padding to eliminate gap
     backgroundColor: 'transparent',
   },
   loadingContainer: {
@@ -4851,7 +5135,7 @@ const styles = StyleSheet.create({
   messagesContent: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    paddingBottom: 12,
+    paddingBottom: 15, // Small padding for better visual separation
   },
   messageContainer: {
     marginVertical: 4,
@@ -4898,28 +5182,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
     borderWidth: 1,
     borderColor: 'rgba(255, 149, 0, 0.3)',
-    paddingRight: 24, // Extra padding for AI icon
-  },
-  aiIndicator: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    borderRadius: 8,
-    padding: 2,
-    shadowColor: '#FF4500',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.6,
-    shadowRadius: 4,
-    elevation: 3,
-    zIndex: 10,
-  },
-  aiIndicatorGradient: {
-    borderRadius: 8,
-    padding: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 24,
-    minHeight: 24,
+    paddingRight: 8,
   },
   messageText: {
     fontSize: 16,
@@ -4940,6 +5203,13 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  attachmentIconContainer: {
+    marginRight: 12,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   attachmentTypeLabel: {
     fontSize: 11,
@@ -4965,6 +5235,116 @@ const styles = StyleSheet.create({
   attachmentSize: {
     fontSize: 12,
     color: '#666',
+  },
+  attachmentUrl: {
+    fontSize: 10,
+    color: '#999',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  imageAttachment: {
+    flex: 1,
+  },
+  documentAttachment: {
+    flex: 1,
+  },
+  fileAttachment: {
+    flex: 1,
+  },
+  attachmentTypeText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  // Image Icon Styles
+  imageIcon: {
+    width: 24,
+    height: 24,
+    position: 'relative',
+  },
+  imageIconSquare: {
+    width: 20,
+    height: 16,
+    borderWidth: 1.5,
+    borderColor: '#666',
+    borderRadius: 2,
+    position: 'absolute',
+    top: 4,
+    left: 2,
+  },
+  imageIconMountain: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 4,
+    borderRightWidth: 4,
+    borderBottomWidth: 6,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#666',
+    position: 'absolute',
+    top: 8,
+    left: 6,
+  },
+  imageIconSun: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#666',
+    position: 'absolute',
+    top: 2,
+    right: 2,
+  },
+  // Document Icon Styles
+  documentIcon: {
+    width: 24,
+    height: 24,
+    position: 'relative',
+  },
+  documentIconPaper: {
+    width: 16,
+    height: 20,
+    borderWidth: 1.5,
+    borderColor: '#666',
+    borderRadius: 1,
+    position: 'absolute',
+    top: 2,
+    left: 4,
+  },
+  documentIconFold: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 4,
+    borderTopWidth: 4,
+    borderLeftColor: 'transparent',
+    borderTopColor: '#666',
+    position: 'absolute',
+    top: 2,
+    right: 4,
+  },
+  // File Icon Styles
+  fileIcon: {
+    width: 24,
+    height: 24,
+    position: 'relative',
+  },
+  fileIconSquare: {
+    width: 18,
+    height: 20,
+    borderWidth: 1.5,
+    borderColor: '#666',
+    borderRadius: 1,
+    position: 'absolute',
+    top: 2,
+    left: 3,
+  },
+  fileIconLines: {
+    width: 12,
+    height: 1,
+    backgroundColor: '#666',
+    position: 'absolute',
+    top: 6,
+    left: 6,
   },
   userMessageText: {
     color: '#333',
@@ -4993,9 +5373,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   inputSection: {
-    backgroundColor: 'transparent',
-    paddingBottom: Platform.OS === 'ios' ? 90 : 80,
-    paddingTop: 0,
+    backgroundColor: '#f0f0f0', // Match WhatsApp input background
+    paddingBottom: 0,
+    paddingTop: 8, // Add top padding for better separation
+    marginBottom: 0, // Ensure no margin at bottom
+    position: 'relative', // Ensure proper positioning
+    zIndex: 1000, // Above other content but below modals
+    borderTopWidth: 1, // Add subtle border to separate from messages
+    borderTopColor: '#e0e0e0',
   },
   inputContainer: {
     paddingHorizontal: 0,
@@ -5354,23 +5739,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    paddingBottom: 12,
+    paddingVertical: 12,
+    paddingBottom: 30, // Small padding for better visual separation from keyboard
     gap: 8,
-    backgroundColor: 'transparent',
+    backgroundColor: '#f0f0f0', // Light gray background like WhatsApp
+    minHeight: 60, // Ensure minimum height for visibility
   },
   textInput: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 45, // Increased minimum height for better visibility
     maxHeight: 100,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 16, // Increased horizontal padding
+    paddingVertical: 12, // Increased vertical padding
     backgroundColor: '#fff', // White background for text input
-    borderRadius: 20,
+    borderRadius: 25, // Slightly more rounded for modern look
+    borderWidth: 1.5, // Slightly thicker border
+    borderColor: '#e0e0e0',
     fontSize: 16,
     color: '#333',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    shadowColor: '#000', // Add subtle shadow for depth
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2, // Android shadow
   },
   attachmentButton: {
     width: 40,
@@ -5480,6 +5874,55 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
+  },
+
+  // Archive Icon Styles
+  archiveIcon: {
+    width: 24,
+    height: 24,
+    position: 'relative',
+  },
+  archiveIconSquare: {
+    width: 18,
+    height: 20,
+    borderWidth: 1.5,
+    borderColor: '#666',
+    borderRadius: 1,
+    position: 'absolute',
+    top: 2,
+    left: 3,
+  },
+  archiveIconLines: {
+    width: 12,
+    height: 1,
+    backgroundColor: '#666',
+    position: 'absolute',
+    top: 6,
+    left: 6,
+  },
+
+  // Folder Icon Styles
+  folderIcon: {
+    width: 24,
+    height: 24,
+    position: 'relative',
+  },
+  folderIconSquare: {
+    width: 18,
+    height: 16,
+    backgroundColor: '#ffa500',
+    borderRadius: 2,
+    position: 'absolute',
+    top: 4,
+    left: 3,
+  },
+  folderIconFold: {
+    width: 8,
+    height: 4,
+    backgroundColor: '#ffa500',
+    position: 'absolute',
+    top: 2,
+    left: 3,
   },
 
   menuOverlay: {

@@ -15,8 +15,8 @@ export default function AuthWrapper({ children }) {
       
       if (isAuthenticated) {
         // User is authenticated, navigate to main app
-        console.log('🔐 AuthWrapper: Navigating to Dashboard');
-        router.replace('/(tabs)/Dashboard');
+        console.log('🔐 AuthWrapper: Navigating to LiveChat');
+        router.replace('/(tabs)/LiveChat');
       } else {
         // User is not authenticated, navigate to login
         console.log('🔐 AuthWrapper: Navigating to login');

@@ -4,7 +4,7 @@ import { sendNewMessageNotification } from '../utils/notifications';
 import { authAPI, tokenManager } from './authService';
 
 // Base API configuration
-const API_BASE_URL = 'https://beta.echoleads.ai/api';
+const API_BASE_URL = 'https://agents.echoleads.ai/api';
 
 // Create axios instance with default config
 const chatApi = axios.create({
@@ -495,20 +495,24 @@ export const chatAPI = {
       // "0" = AI agent DISABLED (bot will NOT respond, only system messages)
       formData.append('enable_ai_bot', aiAgentEnabled ? "1" : "0");
 
-      // Choose the first file (API expects single file under key 'file_path')
-      const file = files[0];
-      if (!file) {
-        throw new Error('No file provided');
+      // Handle multiple files - append each file to file_path
+      if (files.length === 0) {
+        throw new Error('No files provided');
       }
 
-      const fileData = {
-        uri: file.uri,
-        type: file.mimeType,
-        name: file.name,
-      };
+      // Add all files to the form data
+      files.forEach((file, index) => {
+        const fileData = {
+          uri: file.uri,
+          type: file.mimeType,
+          name: file.name,
+        };
 
-      formData.append('file_path', fileData);
-      console.log('📎 Sending file as file_path:', file.name, file.mimeType, file.uri);
+        // For multiple files, we can either append with index or use the same key
+        // Based on your API example showing "▲ 2 files", it seems to accept multiple files under the same key
+        formData.append('file_path', fileData);
+        console.log(`📎 Sending file ${index + 1}/${files.length} as file_path:`, file.name, file.mimeType, file.uri);
+      });
       console.log('📎 AI Agent Status:', aiAgentEnabled ? "1" : "0");
       console.log('📎 AI Behavior:', aiAgentEnabled ? "Bot responds automatically" : "Bot does not respond");
 
@@ -1142,14 +1146,21 @@ export const chatAPI = {
       
       if (primaryFile) {
         const mimeType = primaryFile.mimeType || primaryFile.type || '';
-        if (mimeType.startsWith('image/')) {
+        const fileType = primaryFile.type || '';
+        
+        // Use the detected file type from the frontend if available
+        if (fileType === 'image' || mimeType.startsWith('image/')) {
           messageType = 'image';
-        } else if (mimeType.startsWith('video/')) {
+        } else if (fileType === 'video' || mimeType.startsWith('video/')) {
           messageType = 'video';
-        } else if (mimeType.startsWith('audio/')) {
+        } else if (fileType === 'audio' || mimeType.startsWith('audio/')) {
           messageType = 'audio';
-        } else if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('text')) {
+        } else if (fileType === 'document' || mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('text')) {
           messageType = 'document';
+        } else if (fileType === 'archive' || mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z')) {
+          messageType = 'archive';
+        } else if (fileType === 'folder') {
+          messageType = 'folder';
         } else {
           messageType = 'file';
         }

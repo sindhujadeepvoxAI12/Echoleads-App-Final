@@ -39,8 +39,8 @@ export default function LoginScreen() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      console.log('🔐 Login: User already authenticated, redirecting to dashboard');
-      router.replace('/(tabs)/Dashboard');
+      console.log('🔐 Login: User already authenticated, redirecting to livechat');
+      router.replace('/(tabs)/LiveChat');
     }
   }, [isAuthenticated, isLoading, router]);
 
@@ -161,8 +161,8 @@ export default function LoginScreen() {
 
         setTimeout(() => {
           setShowWelcome(false);
-          // Navigate to dashboard after successful login
-          router.replace('/(tabs)/Dashboard');
+          // Navigate to livechat after successful login
+          router.replace('/(tabs)/LiveChat');
         }, 2000);
       } else {
         throw new Error(loginResult.error || 'Login failed');

@@ -72,6 +72,16 @@ const CalendarPage = () => {
     fetchBookings();
   }, []);
 
+  // Refresh data every minute to update upcoming events count
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Force re-render by updating a dummy state or refetching
+      fetchBookings(true);
+    }, 60000); // Refresh every minute
+
+    return () => clearInterval(interval);
+  }, []);
+
   const onRefresh = () => {
     fetchBookings(true);
   };
@@ -208,16 +218,34 @@ const CalendarPage = () => {
     const sorted = [...sourceEvents].sort((a, b) => {
       const da = parseEventDateTime(a)?.getTime() || 0;
       const db = parseEventDateTime(b)?.getTime() || 0;
-      return da - db;
+      return db - da; // Reverse order: newest to oldest
     });
+
+    // Calculate dynamic height based on number of events
+    const calculateListHeight = () => {
+      const baseHeight = 100; // Base height for title and padding
+      const eventHeight = 100; // Height per event (80px minHeight + 12px margin)
+      const maxHeight = 500; // Maximum height
+      const calculatedHeight = baseHeight + (sorted.length * eventHeight);
+      return Math.min(calculatedHeight, maxHeight);
+    };
+
+    const dynamicListStyle = {
+      ...styles.eventsList,
+      height: sorted.length > 0 ? calculateListHeight() : 100,
+    };
 
     return (
       <View style={styles.selectedDateContainer}>
         {title ? <Text style={styles.selectedDateTitle}>{title}</Text> : null}
         {sorted.length > 0 ? (
-          <ScrollView style={styles.eventsList}>
+          <ScrollView 
+            style={dynamicListStyle}
+            showsVerticalScrollIndicator={true}
+            nestedScrollEnabled={true}
+          >
             {sorted.map((event, index) => (
-              <View key={index} style={styles.eventItem}>
+              <TouchableOpacity key={index} style={styles.eventItem} activeOpacity={0.7}>
                 <View style={styles.eventHeader}>
                   <Text style={styles.eventTime}>
                     {event.availability_time ? event.availability_time.slice(0, 5) : 'N/A'}
@@ -234,7 +262,7 @@ const CalendarPage = () => {
                     Agent: {event.bot_name || 'N/A'}
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </ScrollView>
         ) : (
@@ -249,13 +277,35 @@ const CalendarPage = () => {
 
     const dateEvents = events[selectedDate]?.events || [];
 
+    // Calculate dynamic height for selected date events
+    const calculateSelectedDateHeight = () => {
+      const baseHeight = 100; // Base height for title and padding
+      const eventHeight = 100; // Height per event (80px minHeight + 12px margin)
+      const maxHeight = 500; // Maximum height
+      const calculatedHeight = baseHeight + (dateEvents.length * eventHeight);
+      return Math.min(calculatedHeight, maxHeight);
+    };
+
+    const dynamicSelectedDateStyle = {
+      ...styles.eventsList,
+      height: dateEvents.length > 0 ? calculateSelectedDateHeight() : 100,
+    };
+
     return (
       <View style={styles.selectedDateContainer}>
         <Text style={styles.selectedDateTitle}>Events for {selectedDate}</Text>
         {dateEvents.length > 0 ? (
-          <ScrollView style={styles.eventsList}>
-            {dateEvents.map((event, index) => (
-              <View key={index} style={styles.eventItem}>
+          <ScrollView 
+            style={dynamicSelectedDateStyle}
+            showsVerticalScrollIndicator={true}
+            nestedScrollEnabled={true}
+          >
+            {dateEvents.sort((a, b) => {
+              const da = parseEventDateTime(a)?.getTime() || 0;
+              const db = parseEventDateTime(b)?.getTime() || 0;
+              return db - da; // Sort newest to oldest
+            }).map((event, index) => (
+              <TouchableOpacity key={index} style={styles.eventItem} activeOpacity={0.7}>
                 <View style={styles.eventHeader}>
                   <Text style={styles.eventTime}>
                     {event.availability_time ? event.availability_time.slice(0, 5) : 'N/A'}
@@ -272,7 +322,7 @@ const CalendarPage = () => {
                     Created: {event.created_at ? new Date(event.created_at).toLocaleDateString() : 'N/A'}
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </ScrollView>
         ) : (
@@ -297,7 +347,8 @@ const CalendarPage = () => {
     const totalEvents = bookings.length;
     const upcomingCount = bookings.filter((b) => {
       const dt = parseEventDateTime(b);
-      return dt && dt.getTime() > nowDate().getTime();
+      const now = nowDate();
+      return dt && dt.getTime() > now.getTime();
     }).length;
 
     return (
@@ -341,7 +392,7 @@ const CalendarPage = () => {
     const end = endOfThisWeek();
     return bookings.filter((b) => {
       const dt = parseEventDateTime(b);
-      return dt && dt >= start && dt <= end;
+      return dt && dt.getTime() >= start.getTime() && dt.getTime() <= end.getTime();
     });
   }, [bookings]);
 
@@ -353,24 +404,27 @@ const CalendarPage = () => {
       const dt = parseEventDateTime(b);
       if (!dt) return false;
       // If event is today, only include from now forward; if earlier today, exclude
-      if (dt >= start && dt <= end) return true;
+      if (dt.getTime() >= start.getTime() && dt.getTime() <= end.getTime()) return true;
       // If now is earlier than today's start (unlikely), also include
-      return dt >= startDay && dt <= end && start <= end;
+      return dt.getTime() >= startDay.getTime() && dt.getTime() <= end.getTime() && start.getTime() <= end.getTime();
     });
   }, [bookings]);
 
   const upcomingEvents = useMemo(() => {
     const start = nowDate();
-    return bookings.filter((b) => {
+    const upcoming = bookings.filter((b) => {
       const dt = parseEventDateTime(b);
-      return dt && dt > start;
+      return dt && dt.getTime() > start.getTime();
     });
+    console.log('📅 Upcoming events count:', upcoming.length, 'Current time:', start.toISOString());
+    return upcoming;
   }, [bookings]);
 
   return (
     <View style={styles.container}>
       <ScrollView 
         style={styles.scrollView} 
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -383,7 +437,7 @@ const CalendarPage = () => {
           {renderViewModeSelector()}
           {renderStatsOverview()}
           {viewMode === 'Month' && renderCalendar()}
-          {viewMode === 'Week' && renderEventsList('This Week (from today)', weekEventsFromToday)}
+          {viewMode === 'Week' && renderEventsList('This Week Events', weekEventsFromToday)}
           {viewMode === 'Day' && renderEventsList('Today', todayEventsFromNow)}
           {viewMode === 'List' &&
             renderEventsList(
@@ -405,10 +459,14 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  scrollContent: {
+    paddingBottom: 100, // Add bottom padding to account for tab bar height
+  },
   content: {
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 15, // Moderate padding top
+    paddingBottom: 20, // Add bottom padding
   },
   pageTitle: {
     fontSize: 28,
@@ -540,6 +598,8 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
     marginBottom: 20,
+    flex: 1, // Make container flexible
+    minHeight: 120, // Minimum height for empty state
   },
   selectedDateTitle: {
     fontSize: 16,
@@ -554,15 +614,24 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   eventsList: {
-    maxHeight: 200,
+    maxHeight: 500, // Increased height to accommodate more events
+    flex: 1,
   },
   eventItem: {
     backgroundColor: '#f8f9fa',
     borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
+    padding: 16, // Increased padding for better spacing
+    marginBottom: 12, // Increased margin between cards
     borderLeftWidth: 4,
     borderLeftColor: '#4CAF50',
+    minHeight: 80, // Set minimum height for better visibility
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
   },
   eventHeader: {
     flexDirection: 'row',
@@ -574,6 +643,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#4CAF50',
+    minWidth: 60, // Ensure time has consistent width
   },
   eventName: {
     fontSize: 16,
@@ -581,14 +651,16 @@ const styles = StyleSheet.create({
     color: '#333333',
     flex: 1,
     marginLeft: 12,
+    lineHeight: 20, // Better line height for readability
   },
   eventDetails: {
-    marginTop: 4,
+    marginTop: 8, // Increased margin for better separation
   },
   eventDetail: {
     fontSize: 14,
     color: '#666666',
-    marginBottom: 2,
+    marginBottom: 4, // Increased margin between details
+    lineHeight: 18, // Better line height for readability
   },
   noEventsText: {
     fontSize: 16,

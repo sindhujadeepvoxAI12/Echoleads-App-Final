@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { authAPI, tokenManager } from './authService';
 
-const API_BASE_URL = 'https://beta.echoleads.ai/api';
+const API_BASE_URL = 'https://agents.echoleads.ai/api';
 
 const calendarApi = axios.create({
   baseURL: API_BASE_URL,

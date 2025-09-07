@@ -718,11 +718,14 @@ const DashboardScreen = () => {
 
 
 
-  // Redirect if not authenticated
+  // Redirect if not authenticated or redirect to LiveChat if authenticated
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       console.log('🔐 Dashboard: User not authenticated, redirecting to login');
       router.replace('/login');
+    } else if (!isLoading && isAuthenticated) {
+      console.log('🔐 Dashboard: User authenticated, redirecting to LiveChat');
+      router.replace('/(tabs)/LiveChat');
     }
   }, [isAuthenticated, isLoading, router]);
 

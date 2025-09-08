@@ -1760,13 +1760,20 @@ const LiveChatScreen = () => {
         messageType
       });
 
-      // Send message with files and message type
-      handleSendMessage(message, selectedFiles, messageType);
+      // Store current files before resetting state
+      const currentFiles = [...selectedFiles];
+      const currentMessage = message;
+      const currentMessageType = messageType;
 
-      console.log('🔍 ChatInput: handleSendMessage called, resetting state');
+      // Reset state immediately to prevent double-sending
       setMessage('');
       setSelectedFiles([]);
-      setMessageType('text'); // Reset to text type
+      setMessageType('text');
+
+      // Send message with files and message type using stored values
+      handleSendMessage(currentMessage, currentFiles, currentMessageType);
+
+      console.log('🔍 ChatInput: handleSendMessage called, state reset');
     } else {
       console.log('🔍 ChatInput: Cannot send - no message or files');
       console.log('🔍 ChatInput: Send conditions not met');
@@ -1978,20 +1985,23 @@ const LiveChatScreen = () => {
         }
 
         if (validFiles.length > 0) {
-          setSelectedFiles(prev => [...prev, ...validFiles]);
-        setMessageType('image');
-        setShowAttachmentMenu(false);
-          console.log('📸 Images selected:', validFiles);
-          console.log('📸 Image file structure:', validFiles.map(f => ({
-          name: f.name,
-          uri: f.uri,
-          mimeType: f.mimeType,
-          path: f.path,
-          size: f.size,
-          type: f.type
-        })));
-        console.log('📸 Message type set to:', 'image');
-          console.log('📸 Selected files count:', selectedFiles.length + validFiles.length);
+          setSelectedFiles(prev => {
+            const newFiles = [...prev, ...validFiles];
+            console.log('📸 Images selected:', validFiles);
+            console.log('📸 Image file structure:', validFiles.map(f => ({
+              name: f.name,
+              uri: f.uri,
+              mimeType: f.mimeType,
+              path: f.path,
+              size: f.size,
+              type: f.type
+            })));
+            console.log('📸 Message type set to:', 'image');
+            console.log('📸 Total selected files count:', newFiles.length);
+            return newFiles;
+          });
+          setMessageType('image');
+          setShowAttachmentMenu(false);
         }
       }
     } catch (error) {
@@ -2038,15 +2048,19 @@ const LiveChatScreen = () => {
         }
 
         if (validFiles.length > 0) {
-          setSelectedFiles(prev => [...prev, ...validFiles]);
-        setMessageType('file');
-        setShowAttachmentMenu(false);
-          console.log('📄 Documents selected:', validFiles);
-          console.log('📄 Document types detected:', validFiles.map(f => ({
-          name: f.name,
-          mimeType: f.mimeType,
-          type: f.type
-        })));
+          setSelectedFiles(prev => {
+            const newFiles = [...prev, ...validFiles];
+            console.log('📄 Documents selected:', validFiles);
+            console.log('📄 Document types detected:', validFiles.map(f => ({
+              name: f.name,
+              mimeType: f.mimeType,
+              type: f.type
+            })));
+            console.log('📄 Total selected files count:', newFiles.length);
+            return newFiles;
+          });
+          setMessageType('file');
+          setShowAttachmentMenu(false);
         }
       }
     } catch (error) {
@@ -2095,15 +2109,19 @@ const LiveChatScreen = () => {
         }
 
         if (validFiles.length > 0) {
-          setSelectedFiles(prev => [...prev, ...validFiles]);
-        setMessageType('folder');
-        setShowAttachmentMenu(false);
-          console.log('📁 Folder contents selected:', validFiles);
-          console.log('📁 Folder file types detected:', validFiles.map(f => ({
-          name: f.name,
-          mimeType: f.mimeType,
-          type: f.type
-        })));
+          setSelectedFiles(prev => {
+            const newFiles = [...prev, ...validFiles];
+            console.log('📁 Folder contents selected:', validFiles);
+            console.log('📁 Folder file types detected:', validFiles.map(f => ({
+              name: f.name,
+              mimeType: f.mimeType,
+              type: f.type
+            })));
+            console.log('📁 Total selected files count:', newFiles.length);
+            return newFiles;
+          });
+          setMessageType('folder');
+          setShowAttachmentMenu(false);
         }
       }
     } catch (error) {

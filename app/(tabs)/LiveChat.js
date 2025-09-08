@@ -4569,9 +4569,9 @@ const LiveChatScreen = () => {
       ) : (
         // Chat View
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior="padding"
           style={styles.chatView}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+          keyboardVerticalOffset={Platform.select({ ios: insets.top, android: insets.bottom })}
           enabled={true}
         >
           <ChatHeader
@@ -4762,7 +4762,7 @@ const LiveChatScreen = () => {
               )}
 
               {/* Chat Input Controls */}
-              <View style={styles.inputControlsContainer}>
+              <View style={[styles.inputControlsContainer, { paddingBottom: Math.max(12, 8 + insets.bottom) }]}>
                 {/* Text Input */}
                 <TextInput
                   ref={inputRef}

@@ -306,6 +306,8 @@ export const chatAPI = {
               is_incoming_message: (msg.is_incoming_message !== undefined ? msg.is_incoming_message : (msg.status === 'received' ? 1 : 0)),
               message_type: msg.message_type || 'text',
               status: msg.status || 'sent',
+              // CRITICAL: Include file_path for file/image/document messages
+              file_path: msg.file_path || null,
               // Preserve original fields
               whatsappbot_id: msg.whatsappbot_id,
               contacts_id: msg.contacts_id,

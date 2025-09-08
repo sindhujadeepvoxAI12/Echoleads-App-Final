@@ -65,6 +65,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import * as WebBrowser from 'expo-web-browser';
+import * as Sharing from 'expo-sharing';
 import { StatusBar } from 'expo-status-bar';
 // Removed WhatsAppMessagingManager UI import to run 24h logic in background only
 import io, { Socket } from "socket.io-client";
@@ -415,16 +417,19 @@ const ChatHeader = ({ chat, isAdmin, globalAgentEnabled, onToggleGlobalAgent, on
 };
 
 // Message Bubble Component
-const MessageBubble = ({ message, isUser, index }) => {
-  // console.log('🔍 MessageBubble: Rendering message:', {
-  //   index,
-  //   id: message.id,
-  //   text: message.text?.substring(0, 30),
-  //   sender: message.sender,
-  //   isUser,
-  //   status: message.status,
-  //   isAI: message.isAI
-  // });
+const MessageBubble = ({ message, isUser, index, onAttachmentClick }) => {
+  console.log('🔍 MessageBubble: Rendering message:', {
+    index,
+    id: message.id,
+    text: message.text?.substring(0, 30),
+    sender: message.sender,
+    isUser,
+    status: message.status,
+    isAI: message.isAI,
+    messageType: message.messageType,
+    attachments: message.attachments,
+    filePath: message.filePath
+  });
 
   // Determine message positioning based on sender
   const isUserMessage = message.sender === 'user'; // RIGHT side (system/bot messages)
@@ -570,8 +575,14 @@ const MessageBubble = ({ message, isUser, index }) => {
         {/* File Attachments Display */}
         {message.attachments && message.attachments.length > 0 && (
           <View style={styles.attachmentsContainer}>
+            {console.log('📎 Rendering attachments:', message.attachments)}
             {message.attachments.map((attachment, index) => (
-              <View key={index} style={styles.attachmentItem}>
+              <TouchableOpacity 
+                key={index} 
+                style={styles.attachmentItem}
+                onPress={() => onAttachmentClick && onAttachmentClick(attachment)}
+                activeOpacity={0.7}
+              >
                 <View style={styles.attachmentIconContainer}>
                   {attachment.type === 'image' ? (
                     <View style={styles.imageIcon}>
@@ -622,7 +633,7 @@ const MessageBubble = ({ message, isUser, index }) => {
                     </Text>
                   )}
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -1524,7 +1535,8 @@ const LiveChatScreen = () => {
       // Extract message type and file information
       const messageType = msg.message_type || msg.type || 'text';
       const filePath = msg.file_path || msg.file_url || msg.url || null;
-      const fileName = msg.file_name || msg.name || null;
+      // Extract filename from file_path if not provided separately
+      const fileName = msg.file_name || msg.name || (filePath ? filePath.split('/').pop() : null);
       const fileSize = msg.file_size || msg.size || null;
 
       // Log the raw message for debugging
@@ -1657,6 +1669,7 @@ const LiveChatScreen = () => {
 
       // Handle different message types
       if (messageType === 'image' && filePath) {
+        console.log('🖼️ Processing image message:', { messageType, filePath, fileName, text });
         displayText = text || 'Image';
         attachments = [{
           type: 'image',
@@ -1665,6 +1678,7 @@ const LiveChatScreen = () => {
           size: fileSize
         }];
       } else if (messageType === 'document' && filePath) {
+        console.log('📄 Processing document message:', { messageType, filePath, fileName, text });
         displayText = text || 'Document';
         attachments = [{
           type: 'document',
@@ -1673,6 +1687,7 @@ const LiveChatScreen = () => {
           size: fileSize
         }];
       } else if (messageType === 'archive' && filePath) {
+        console.log('📦 Processing archive message:', { messageType, filePath, fileName, text });
         displayText = text || 'Archive';
         attachments = [{
           type: 'archive',
@@ -1681,6 +1696,7 @@ const LiveChatScreen = () => {
           size: fileSize
         }];
       } else if (messageType === 'file' && filePath) {
+        console.log('📁 Processing file message:', { messageType, filePath, fileName, text });
         displayText = text || 'File';
         attachments = [{
           type: 'file',
@@ -1689,6 +1705,7 @@ const LiveChatScreen = () => {
           size: fileSize
         }];
       } else if (messageType === 'folder' && filePath) {
+        console.log('📂 Processing folder message:', { messageType, filePath, fileName, text });
         displayText = text || 'Folder';
         attachments = [{
           type: 'folder',
@@ -1696,6 +1713,29 @@ const LiveChatScreen = () => {
           url: filePath,
           size: fileSize
         }];
+      } else if (filePath && !messageType) {
+        // Fallback: if we have a file_path but no message_type, try to detect from file extension
+        console.log('🔍 Fallback: Processing file without message_type:', { filePath, fileName, text });
+        const extension = fileName ? fileName.split('.').pop()?.toLowerCase() : '';
+        let detectedType = 'file';
+        
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
+          detectedType = 'image';
+        } else if (['pdf', 'doc', 'docx', 'txt'].includes(extension)) {
+          detectedType = 'document';
+        } else if (['zip', 'rar', '7z'].includes(extension)) {
+          detectedType = 'archive';
+        }
+        
+        displayText = text || detectedType.charAt(0).toUpperCase() + detectedType.slice(1);
+        attachments = [{
+          type: detectedType,
+          name: fileName || detectedType.charAt(0).toUpperCase() + detectedType.slice(1),
+          url: filePath,
+          size: fileSize
+        }];
+      } else if (messageType && messageType !== 'text') {
+        console.log('⚠️ Unhandled message type:', { messageType, filePath, fileName, text });
       }
 
       return {
@@ -1987,16 +2027,16 @@ const LiveChatScreen = () => {
         if (validFiles.length > 0) {
           setSelectedFiles(prev => {
             const newFiles = [...prev, ...validFiles];
-            console.log('📸 Images selected:', validFiles);
-            console.log('📸 Image file structure:', validFiles.map(f => ({
-              name: f.name,
-              uri: f.uri,
-              mimeType: f.mimeType,
-              path: f.path,
-              size: f.size,
-              type: f.type
-            })));
-            console.log('📸 Message type set to:', 'image');
+          console.log('📸 Images selected:', validFiles);
+          console.log('📸 Image file structure:', validFiles.map(f => ({
+          name: f.name,
+          uri: f.uri,
+          mimeType: f.mimeType,
+          path: f.path,
+          size: f.size,
+          type: f.type
+        })));
+        console.log('📸 Message type set to:', 'image');
             console.log('📸 Total selected files count:', newFiles.length);
             return newFiles;
           });
@@ -2050,12 +2090,12 @@ const LiveChatScreen = () => {
         if (validFiles.length > 0) {
           setSelectedFiles(prev => {
             const newFiles = [...prev, ...validFiles];
-            console.log('📄 Documents selected:', validFiles);
-            console.log('📄 Document types detected:', validFiles.map(f => ({
-              name: f.name,
-              mimeType: f.mimeType,
-              type: f.type
-            })));
+          console.log('📄 Documents selected:', validFiles);
+          console.log('📄 Document types detected:', validFiles.map(f => ({
+          name: f.name,
+          mimeType: f.mimeType,
+          type: f.type
+        })));
             console.log('📄 Total selected files count:', newFiles.length);
             return newFiles;
           });
@@ -2111,12 +2151,12 @@ const LiveChatScreen = () => {
         if (validFiles.length > 0) {
           setSelectedFiles(prev => {
             const newFiles = [...prev, ...validFiles];
-            console.log('📁 Folder contents selected:', validFiles);
-            console.log('📁 Folder file types detected:', validFiles.map(f => ({
-              name: f.name,
-              mimeType: f.mimeType,
-              type: f.type
-            })));
+          console.log('📁 Folder contents selected:', validFiles);
+          console.log('📁 Folder file types detected:', validFiles.map(f => ({
+          name: f.name,
+          mimeType: f.mimeType,
+          type: f.type
+        })));
             console.log('📁 Total selected files count:', newFiles.length);
             return newFiles;
           });
@@ -2143,6 +2183,115 @@ const LiveChatScreen = () => {
 
       return newFiles;
     });
+  };
+
+  // Handle file attachment click
+  const handleAttachmentClick = async (attachment) => {
+    try {
+      console.log('📎 Opening attachment:', attachment);
+      
+      if (!attachment.url) {
+        Alert.alert('Error', 'File URL not available');
+        return;
+      }
+
+      const fileUrl = attachment.url;
+      const fileType = attachment.type;
+      const fileName = attachment.name;
+
+      // Handle different file types
+      if (fileType === 'image') {
+        // For images, open in web browser or show in a modal
+        await WebBrowser.openBrowserAsync(fileUrl, {
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+          controlsColor: '#FF9500',
+          showTitle: true,
+          enableBarCollapsing: false,
+        });
+      } else if (fileType === 'document' || fileType === 'file') {
+        // For documents, try to open in web browser first
+        try {
+          await WebBrowser.openBrowserAsync(fileUrl, {
+            presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+            controlsColor: '#FF9500',
+            showTitle: true,
+          });
+        } catch (error) {
+          // If web browser fails, try to share the file
+          console.log('Web browser failed, trying to share file:', error);
+          await handleFileShare(fileUrl, fileName);
+        }
+      } else {
+        // For other file types, try to open in web browser
+        await WebBrowser.openBrowserAsync(fileUrl, {
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
+          controlsColor: '#FF9500',
+          showTitle: true,
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error opening attachment:', error);
+      Alert.alert('Error', 'Unable to open file. Please try again.');
+    }
+  };
+
+  // Handle file sharing as fallback
+  const handleFileShare = async (fileUrl, fileName) => {
+    try {
+      // Check if sharing is available
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert('Error', 'Sharing is not available on this device');
+        return;
+      }
+
+      // Download file to local storage first
+      const fileUri = FileSystem.documentDirectory + fileName;
+      const downloadResult = await FileSystem.downloadAsync(fileUrl, fileUri);
+      
+      if (downloadResult.status === 200) {
+        // Share the downloaded file
+        await Sharing.shareAsync(downloadResult.uri, {
+          mimeType: getMimeType(fileName),
+          dialogTitle: `Share ${fileName}`,
+        });
+      } else {
+        throw new Error('Failed to download file');
+      }
+    } catch (error) {
+      console.error('❌ Error sharing file:', error);
+      Alert.alert('Error', 'Unable to share file. Please try again.');
+    }
+  };
+
+  // Get MIME type based on file extension
+  const getMimeType = (fileName) => {
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    const mimeTypes = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'txt': 'text/plain',
+      'zip': 'application/zip',
+      'rar': 'application/x-rar-compressed',
+    };
+    return mimeTypes[extension] || 'application/octet-stream';
+  };
+
+  // Format file size for display
+  const formatFileSize = (bytes) => {
+    if (!bytes || bytes === 0) return '0 B';
+    
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
   const getMessageTypeIcon = () => {
@@ -2261,7 +2410,8 @@ const LiveChatScreen = () => {
     // Extract message type and file information
     const messageType = msg.message_type || msg.type || 'text';
     const filePath = msg.file_path || msg.file_url || msg.url || null;
-    const fileName = msg.file_name || msg.name || null;
+    // Extract filename from file_path if not provided separately
+    const fileName = msg.file_name || msg.name || (filePath ? filePath.split('/').pop() : null);
     const fileSize = msg.file_size || msg.size || null;
     const text = msg.message || msg.text || '';
 
@@ -2307,6 +2457,26 @@ const LiveChatScreen = () => {
       attachments = [{
         type: 'folder',
         name: fileName || 'Folder',
+        url: filePath,
+        size: fileSize
+      }];
+    } else if (filePath && !messageType) {
+      // Fallback: if we have a file_path but no message_type, try to detect from file extension
+      const extension = fileName ? fileName.split('.').pop()?.toLowerCase() : '';
+      let detectedType = 'file';
+      
+      if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
+        detectedType = 'image';
+      } else if (['pdf', 'doc', 'docx', 'txt'].includes(extension)) {
+        detectedType = 'document';
+      } else if (['zip', 'rar', '7z'].includes(extension)) {
+        detectedType = 'archive';
+      }
+      
+      displayText = text || detectedType.charAt(0).toUpperCase() + detectedType.slice(1);
+      attachments = [{
+        type: detectedType,
+        name: fileName || detectedType.charAt(0).toUpperCase() + detectedType.slice(1),
         url: filePath,
         size: fileSize
       }];
@@ -3555,10 +3725,76 @@ const LiveChatScreen = () => {
     };
   }, [globalAgentEnabled, isInitialized]); // Remove reclassifyMessages dependency to prevent infinite loop
 
+  // Track if user is manually scrolling
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const scrollTimeoutRef = useRef(null);
+
+  // Handle scroll events to detect user interaction
+  const handleScroll = (event) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const isAtBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 20; // 20px threshold
+    
+    // Show/hide scroll to bottom button
+    setShowScrollToBottom(!isAtBottom);
+    
+    // If user is near the bottom, enable auto-scroll
+    if (isAtBottom) {
+      setShouldAutoScroll(true);
+      setIsUserScrolling(false);
+    } else {
+      // User is scrolling up, disable auto-scroll temporarily
+      setShouldAutoScroll(false);
+      setIsUserScrolling(true);
+      
+      // Clear any existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      
+      // Re-enable auto-scroll after user stops scrolling for 3 seconds
+      scrollTimeoutRef.current = setTimeout(() => {
+        setShouldAutoScroll(true);
+        setIsUserScrolling(false);
+      }, 3000);
+    }
+  };
+
+  // Handle scroll begin to detect when user starts scrolling
+  const handleScrollBeginDrag = () => {
+    setIsUserScrolling(true);
+    setShouldAutoScroll(false);
+  };
+
+  // Handle scroll end to detect when user stops scrolling
+  const handleScrollEndDrag = () => {
+    // Don't immediately re-enable auto-scroll, let handleScroll decide
+  };
+
+  // Handle scroll to bottom button press
+  const handleScrollToBottom = () => {
+    if (flatListRef.current) {
+      setShouldAutoScroll(true);
+      setIsUserScrolling(false);
+      setShowScrollToBottom(false);
+      flatListRef.current.scrollToEnd({ animated: true });
+    }
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Add keyboard listener to scroll to bottom when keyboard appears
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
-      if (flatListRef.current) {
+      if (flatListRef.current && shouldAutoScroll) {
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 100);
@@ -3566,7 +3802,7 @@ const LiveChatScreen = () => {
     });
 
     const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
-      if (flatListRef.current) {
+      if (flatListRef.current && shouldAutoScroll) {
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 100);
@@ -3577,7 +3813,7 @@ const LiveChatScreen = () => {
       keyboardDidShowListener?.remove();
       keyboardDidHideListener?.remove();
     };
-  }, []);
+  }, [shouldAutoScroll]);
 
   // Set up smart refresh when data is loaded
   useEffect(() => {
@@ -4346,7 +4582,16 @@ const LiveChatScreen = () => {
           {/* Messages List */}
           {!selectedChat?.isLoading && !selectedChat?.hasError && (
             <View style={styles.chatContainer}>
-
+              {/* Scroll to Bottom Button */}
+              {showScrollToBottom && (
+                <TouchableOpacity
+                  style={styles.scrollToBottomButton}
+                  onPress={handleScrollToBottom}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="chevron-down" size={20} color="#fff" />
+                </TouchableOpacity>
+              )}
 
               {selectedChat?.messages && selectedChat.messages.length > 0 ? (
                 <FlatList
@@ -4375,6 +4620,7 @@ const LiveChatScreen = () => {
                         message={item}
                         isUser={item.sender === "user"} // Only system/bot messages are "user" (right side)
                         index={index}
+                        onAttachmentClick={handleAttachmentClick}
                       />
                     );
                   }}
@@ -4384,8 +4630,26 @@ const LiveChatScreen = () => {
                   keyboardShouldPersistTaps="handled"
                   keyboardDismissMode="interactive"
                   automaticallyAdjustKeyboardInsets={true}
-                  onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-                  onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+                  onScroll={handleScroll}
+                  onScrollBeginDrag={handleScrollBeginDrag}
+                  onScrollEndDrag={handleScrollEndDrag}
+                  scrollEventThrottle={16}
+                  onContentSizeChange={() => {
+                    // Only auto-scroll if user is not manually scrolling and should auto-scroll
+                    if (shouldAutoScroll && !isUserScrolling) {
+                      setTimeout(() => {
+                        flatListRef.current?.scrollToEnd({ animated: true });
+                      }, 100);
+                    }
+                  }}
+                  onLayout={() => {
+                    // Only auto-scroll on initial layout if should auto-scroll
+                    if (shouldAutoScroll) {
+                      setTimeout(() => {
+                        flatListRef.current?.scrollToEnd({ animated: false });
+                      }, 100);
+                    }
+                  }}
                 />
               ) : (
                 <View style={styles.emptyMessagesContainer}>
@@ -5096,6 +5360,24 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 0, // Remove bottom padding to eliminate gap
     backgroundColor: 'transparent',
+    position: 'relative',
+  },
+  scrollToBottomButton: {
+    position: 'absolute',
+    bottom: 20, // Move closer to the text input
+    right: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#FF9500',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 1000,
   },
   loadingContainer: {
     flex: 1,
@@ -5216,11 +5498,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    backgroundColor: 'transparent',
     borderRadius: 8,
     marginBottom: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.1)',
+    borderWidth: 0.5,
+    borderColor: '#000',
+    // subtle highlight without heavy shadow
   },
   attachmentIconContainer: {
     marginRight: 12,

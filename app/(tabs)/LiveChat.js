@@ -2803,6 +2803,42 @@ const LiveChatScreen = () => {
   // };
 
 
+  // Build a robust display name for notifications
+  const getChatDisplayName = (chat, payload) => {
+    if (!chat && !payload) return 'Chat';
+    const safe = (v) => (typeof v === 'string' ? v.trim() : '');
+    const extractPhoneFromUid = (u) => {
+      const s = safe(u);
+      if (!s) return '';
+      const head = s.split('_')[0];
+      if (/^\d{7,}$/.test(head)) return head; // looks like a phone number
+      return '';
+    };
+    const first = safe(chat?.first_name || chat?.firstName || chat?.contact_first_name || chat?.contact?.first_name);
+    const last = safe(chat?.last_name || chat?.lastName || chat?.contact_last_name || chat?.contact?.last_name);
+    const fullFromParts = [first, last].filter(Boolean).join(' ').trim();
+    const fromNameField = safe(chat?.name || chat?.contact_name || chat?.contact?.name);
+    const candidate = fullFromParts || fromNameField;
+
+    // If candidate looks like a UID, ignore it
+    const looksLikeUid = /\d{6,}_[a-z0-9]+/i.test(candidate);
+    if (candidate && !looksLikeUid) return candidate;
+
+    // Prefer phone number as the default fallback
+    const phone = safe(chat?.phone || chat?.contact_phone || chat?.contact?.phone || payload?.phone || payload?.contact_phone);
+    if (phone) return phone;
+
+    // Try to derive phone from UID when phone field is unavailable
+    const derivedPhone = extractPhoneFromUid(payload?.uid || chat?.uid || '');
+    if (derivedPhone) return derivedPhone;
+
+    // Fallback to payload hints
+    const payloadName = safe(payload?.name || payload?.contact_name);
+    if (payloadName && !/\d{6,}_[a-z0-9]+/i.test(payloadName)) return payloadName;
+
+    return 'Chat';
+  };
+
   // update chat (move to top) then notify
   const handleLastMsgAndNotify = (payload) => {
     if (!payload?.uid || !payload?.last_message) return;
@@ -2832,10 +2868,7 @@ const LiveChatScreen = () => {
       const reordered = target ? [target, ...rest] : updated;
 
       // 2) trigger local notification (fire & forget)
-      const chatName =
-        (match?.name && match.name.trim()) ||
-        (match?.phone && String(match.phone)) ||
-        payload.uid;
+      const chatName = getChatDisplayName(match, payload);
 
       const messageText = payload.last_message?.message || 'New message';
 

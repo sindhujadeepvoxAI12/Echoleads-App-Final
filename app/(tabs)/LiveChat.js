@@ -2394,11 +2394,11 @@ const LiveChatScreen = () => {
 
   const SERVER_URL = "https://websocket.echoleads.ai"; // 👈 For Android emulator; change to your server IP
 
-  const whatsappbot_id = "97c6adbe-6a38-df1f62f88011-WB"; // replace with real values
+  // const whatsappbot_id = "97c6adbe-6a38-df1f62f88011-WB"; // replace with real values
   // const uid = "8788226091_68ak449230e299";
   // const uid = "1756971867_68b9435bf05a1'";
 
-  // const [whatsappbot_id, setwhatsappbot_id] = useState("");
+  const [whatsappbot_id, setwhatsappbot_id] = useState("");  
   const [uid, setuid] = useState("");
 
   const [socket, setSocket] = useState(null);
@@ -2904,6 +2904,7 @@ const LiveChatScreen = () => {
       return;
     }
     setuid(chat.uid)
+    setwhatsappbot_id(chat.whatsappbot_id)
 
     console.log('🔍 handleChatSelect: Using identifier:', chatIdentifier);
 

@@ -108,11 +108,6 @@ export const authAPI = {
   // Login function - using form-data as per API requirements
   login: async (credentials) => {
     try {
-      console.log('🔐 authService: Login attempt with credentials:', {
-        email: credentials.email,
-        password: credentials.password ? '***' : 'undefined',
-        device_token: credentials.device_token ? `${credentials.device_token.substring(0, 30)}...` : 'undefined'
-      });
       
       // Create FormData for login request
       const formData = new FormData();
@@ -122,19 +117,8 @@ export const authAPI = {
       // Add device_token if provided
       if (credentials.device_token && credentials.device_token.trim() !== '') {
         formData.append('device_token', credentials.device_token);
-        console.log('🔐 authService: Added device_token to FormData:', credentials.device_token);
-      } else {
-        console.log('🔐 authService: No valid device_token provided, skipping');
       }
       
-      console.log('🔐 authService: Sending login request to:', `${API_BASE_URL}/auth/login`);
-      console.log('🔐 authService: FormData contents:', {
-        email: credentials.email,
-        password: credentials.password ? '***' : 'undefined',
-        device_token: credentials.device_token || 'not provided',
-        device_token_type: typeof credentials.device_token,
-        device_token_length: credentials.device_token ? credentials.device_token.length : 0
-      });
       
       const response = await api.post('/auth/login', formData, {
         headers: {
@@ -143,11 +127,6 @@ export const authAPI = {
         timeout: 15000,
       });
       
-      console.log('🔐 authService: Login response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        data: response.data
-      });
 
       // Store credentials for future token refresh
       if (response.data.access_token) {
@@ -160,17 +139,7 @@ export const authAPI = {
       
       return response.data;
     } catch (error) {
-      console.error('🔐 authService: Login failed:', {
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        config: {
-          url: error.config?.url,
-          method: error.config?.method,
-          headers: error.config?.headers
-        }
-      });
+      console.error('🔐 authService: Login failed:', error.message);
       throw error;
     }
   },
@@ -245,6 +214,45 @@ export const authAPI = {
     } catch (error) {
       console.error('🔐 authService: Error getting valid token:', error);
       return null;
+    }
+  },
+
+  // Google login function
+  googleLogin: async (googleToken, deviceToken) => {
+    try {
+      console.log('🔐 authService: Google login attempt');
+      
+      // Create FormData for Google login request
+      const formData = new FormData();
+      formData.append('token', googleToken);
+      
+      // Add device_token if provided
+      if (deviceToken && deviceToken.trim() !== '') {
+        formData.append('device_token', deviceToken);
+      }
+      
+      const response = await api.post('/auth/googlelogin', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 15000,
+      });
+      
+      console.log('🔐 authService: Google login successful');
+
+      // Store credentials for future token refresh
+      if (response.data.access_token) {
+        await tokenManager.storeToken(
+          response.data.access_token,
+          response.data.expires_at,
+          { googleToken, deviceToken } // Store Google-specific credentials
+        );
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('🔐 authService: Google login failed:', error.message);
+      throw error;
     }
   }
 };

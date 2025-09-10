@@ -1,26 +1,44 @@
 {
   "project_info": {
-    "project_number": "466222490253",
-    "project_id": "echoleads-2bdeb",
-    "storage_bucket": "echoleads-2bdeb.firebasestorage.app"
+    "project_number": "334297696005",
+    "project_id": "crack-case-431303-k9",
+    "storage_bucket": "crack-case-431303-k9.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:466222490253:android:e4036be928529f5d0c78c4",
+        "mobilesdk_app_id": "1:334297696005:android:e526071e3f9d820d4a596c",
         "android_client_info": {
           "package_name": "com.echoleads.EchoLeads"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.echoleads.EchoLeads",
+            "certificate_hash": "sha1:8E:16:B8:3C:D5:84:2F:A8:C7:3B:CF:28:E1:AB:F0:82:8E:CB:83:09"
+          }
+        },
+        {
+          "client_id": "334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyD_CYBzflwI32DUJRw1-H_yEK5qJmyVHXA"
+          "current_key": "AIzaSyCPySSnhyhLqaguHlizzLCGJlx7deZu4wg"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

@@ -27,6 +27,13 @@
           "color": "#ffffff",
           "defaultChannel": "default"
         }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.334297696005-or01n201vocu6rpnpchvstruijoq7aut",
+          "androidClientId": "334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com"
+        }
       ]
     ],
     "experiments": {
@@ -44,7 +51,9 @@
       "permissions": [
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
-        "android.permission.WAKE_LOCK"
+        "android.permission.WAKE_LOCK",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
       ]
     }
   }

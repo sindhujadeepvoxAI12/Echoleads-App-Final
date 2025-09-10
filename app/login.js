@@ -10,7 +10,8 @@ import {
   Dimensions,
   StatusBar,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Alert
 } from 'react-native';
 // Safe area is handled globally in app/_layout.js
 import { Eye, EyeOff, Mail, Lock, ChevronRight, Zap, User } from 'lucide-react-native';
@@ -20,6 +21,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI } from './services/authService';
 import { registerForPushNotificationsAsync } from './utils/notifications';
+// Production Google Sign-In implementation with Expo Go fallback
+let GoogleSignin = null;
+
+try {
+  GoogleSignin = require('@react-native-google-signin/google-signin').GoogleSignin;
+} catch (error) {
+  console.warn('Google Sign-In not available in Expo Go:', error.message);
+  // GoogleSignin will remain null for Expo Go
+}
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -35,11 +45,36 @@ export default function LoginScreen() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [username, setUsername] = useState('');
   const [errors, setErrors] = useState({});
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  // Configure Google Sign-In
+  useEffect(() => {
+    if (GoogleSignin) {
+      try {
+        GoogleSignin.configure({
+          webClientId: '334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com',
+          offlineAccess: true,
+          hostedDomain: '',
+          forceCodeForRefreshToken: true,
+          scopes: ['profile', 'email'],
+        });
+        console.log('✅ Google Sign-In configured successfully');
+        console.log('🔍 Configuration details:', {
+          webClientId: '334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com',
+          offlineAccess: true,
+          scopes: ['profile', 'email']
+        });
+      } catch (error) {
+        console.error('❌ Google Sign-In configuration failed:', error);
+      }
+    } else {
+      console.warn('⚠️ GoogleSignin is not available - this might indicate a configuration issue');
+    }
+  }, []);
 
   // Redirect if already authenticated
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      console.log('🔐 Login: User already authenticated, redirecting to livechat');
       router.replace('/(tabs)/LiveChat');
     }
   }, [isAuthenticated, isLoading, router]);
@@ -121,12 +156,7 @@ export default function LoginScreen() {
   
     try {
       // Get device token for push notifications
-      console.log('🔐 Login: Attempting to get device token...');
       const deviceToken = await registerForPushNotificationsAsync();
-      console.log('🔐 Login: Device token received:', deviceToken);
-      console.log('🔐 Login: Device token type:', typeof deviceToken);
-      console.log('🔐 Login: Device token length:', deviceToken ? deviceToken.length : 0);
-      console.log('🔐 Login: Device token preview:', deviceToken ? `${deviceToken.substring(0, 50)}...` : 'null');
       
       const loginData = {
         email: emailOrUsername.trim(),
@@ -134,14 +164,8 @@ export default function LoginScreen() {
         device_token: deviceToken, // Send the Expo push token as device_token (null if not available)
       };
       
-      console.log('🔐 Login: Sending login data:', {
-        email: loginData.email,
-        password: loginData.password ? '***' : 'undefined',
-        device_token: loginData.device_token ? `${loginData.device_token.substring(0, 20)}...` : 'empty'
-      });
   
       const res = await authAPI.login(loginData);
-      console.log('Login response:', JSON.stringify(res));
 
       const token =
         res.token ||
@@ -176,6 +200,118 @@ export default function LoginScreen() {
       alert(msg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    
+    try {
+      // Check if Google Sign-In is available
+      if (!GoogleSignin) {
+        Alert.alert(
+          'Google Sign-In Not Available',
+          'Google Sign-In requires a development build to work properly. Please build the app using EAS Build to use this feature.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
+      // Check if Google Play Services are available
+      console.log('🔐 Checking Google Play Services...');
+      await GoogleSignin.hasPlayServices();
+      console.log('✅ Google Play Services available');
+      
+      // Additional debugging for configuration
+      console.log('🔍 Google Sign-In configuration check:');
+      console.log('🔍 Package name from app.json:', 'com.echoleads.EchoLeads');
+      console.log('🔍 Web client ID:', '334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com');
+      
+      // Get device token for push notifications
+      console.log('🔐 Getting device token...');
+      const deviceToken = await registerForPushNotificationsAsync();
+      console.log('✅ Device token received:', deviceToken ? 'Yes' : 'No');
+      
+      // Sign in with Google
+      console.log('🔐 Initiating Google Sign-In...');
+      const userInfo = await GoogleSignin.signIn();
+      console.log('✅ Google Sign-In successful, user info received');
+      console.log('🔍 User info details:', {
+        hasIdToken: !!userInfo.idToken,
+        hasAccessToken: !!userInfo.accessToken,
+        hasUser: !!userInfo.user,
+        userEmail: userInfo.user?.email,
+        userName: userInfo.user?.name
+      });
+      
+      // Get the ID token
+      let googleToken = userInfo.idToken;
+      
+      // Fallback: try to get token from different properties
+      if (!googleToken) {
+        console.warn('⚠️ idToken not found, trying alternative properties...');
+        googleToken = userInfo.data?.idToken || userInfo.token || userInfo.accessToken;
+        console.log('🔍 Alternative token found:', !!googleToken);
+      }
+      
+      if (!googleToken) {
+        console.error('❌ No Google ID token received');
+        console.error('❌ Full userInfo object:', JSON.stringify(userInfo, null, 2));
+        console.error('❌ Available properties:', Object.keys(userInfo));
+        throw new Error('No Google ID token received');
+      }
+      console.log('✅ Google ID token received, length:', googleToken.length);
+      
+      // Call the Google login API
+      const res = await authAPI.googleLogin(googleToken, deviceToken);
+      
+      const name = res.user?.name || res.user?.username || userInfo.user.name || 'User';
+      
+      // Use AuthContext to handle login
+      const loginResult = await login({ googleToken, deviceToken }, res);
+      
+      if (loginResult.success) {
+        setUsername(name);
+        setShowWelcome(true);
+  
+        setTimeout(() => {
+          setShowWelcome(false);
+          router.replace('/(tabs)/LiveChat');
+        }, 2000);
+      } else {
+        throw new Error(loginResult.error || 'Google login failed');
+      }
+    } catch (error) {
+      let errorMessage = 'Google sign-in failed. Please try again.';
+      
+      if (error.code === 'SIGN_IN_CANCELLED') {
+        errorMessage = 'Google sign-in was cancelled.';
+      } else if (error.code === 'IN_PROGRESS') {
+        errorMessage = 'Google sign-in is already in progress.';
+      } else if (error.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
+        errorMessage = 'Google Play Services not available.';
+      } else if (error.code === 'DEVELOPER_ERROR') {
+        errorMessage = 'Configuration error. This usually means the app needs to be rebuilt after configuration changes.';
+        console.error('❌ DEVELOPER_ERROR details:', {
+          code: error.code,
+          message: error.message,
+          suggestion: 'Try rebuilding the app with: npx eas build --profile development --platform android'
+        });
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      console.error('❌ Google Sign-In Error Details:', {
+        code: error.code,
+        message: error.message,
+        stack: error.stack
+      });
+      
+      Alert.alert('Google Sign-In Error', errorMessage);
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -381,15 +517,33 @@ export default function LoginScreen() {
                 </View>
 
                 {/* Social Buttons */}
-                {/* <View style={styles.socialContainer}>
-                  <TouchableOpacity style={styles.socialButton}>
-                    <Text style={styles.socialButtonText}>Continue with Google</Text>
+                <View style={styles.socialContainer}>
+                  <TouchableOpacity 
+                    style={[
+                      styles.socialButton, 
+                      googleLoading && styles.socialButtonLoading
+                    ]}
+                    onPress={handleGoogleSignIn}
+                    disabled={googleLoading}
+                  >
+                    <View style={styles.socialButtonContent}>
+                      {googleLoading ? (
+                        <View style={styles.loadingContainer}>
+                          <View style={styles.loadingSpinner} />
+                          <Text style={styles.socialButtonText}>Signing in...</Text>
+                        </View>
+                      ) : (
+                        <>
+                          <Text style={styles.googleIcon}>G</Text>
+                           <Text style={styles.socialButtonText}>
+                             Continue with Google
+                           </Text>
+                        </>
+                      )}
+                    </View>
                   </TouchableOpacity>
                   
-                  <TouchableOpacity style={styles.socialButton}>
-                    <Text style={styles.socialButtonText}>Continue with Apple</Text>
-                  </TouchableOpacity>
-                </View> */}
+                </View>
               </View>
             </View>
           </View>
@@ -678,17 +832,50 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   socialButton: {
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E5E5E5',
+    shadowColor: '#000000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  socialButtonLoading: {
+    opacity: 0.7,
+  },
+  socialButtonDisabled: {
+    opacity: 0.5,
+    backgroundColor: '#F5F5F5',
+  },
+  socialButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   socialButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333333',
+  },
+  disabledText: {
+    color: '#999999',
+  },
+  googleIcon: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#4285F4',
+    marginRight: 12,
+    width: 20,
+    height: 20,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   footer: {
     alignItems: 'center',

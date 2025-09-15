@@ -27,23 +27,24 @@ export const AuthProvider = ({ children }) => {
     try {
       setIsLoading(true);
       
-      // Get stored token info
-      const { token: storedToken, expiresAt, userCredentials } = await tokenManager.getStoredTokenInfo();
+      // Get stored token and user data
+      const storedToken = await tokenManager.getAccessToken();
+      const storedUser = await tokenManager.getUserData();
       
-      if (storedToken && !tokenManager.isTokenExpired(expiresAt)) {
+      if (storedToken && !tokenManager.isTokenExpired(storedToken)) {
         // Valid token exists, user is authenticated
         setToken(storedToken);
-        setUser(userCredentials);
+        setUser(storedUser);
         setIsAuthenticated(true);
         console.log('🔐 Auth: User automatically authenticated with stored token');
-      } else if (storedToken && tokenManager.isTokenExpired(expiresAt)) {
+      } else if (storedToken && tokenManager.isTokenExpired(storedToken)) {
         // Token expired, try to refresh
         console.log('🔐 Auth: Token expired, attempting refresh...');
         const newToken = await tokenManager.refreshToken();
         
         if (newToken) {
-          const { token: refreshedToken, userCredentials: refreshedUser } = await tokenManager.getStoredTokenInfo();
-          setToken(refreshedToken);
+          const refreshedUser = await tokenManager.getUserData();
+          setToken(newToken);
           setUser(refreshedUser);
           setIsAuthenticated(true);
           console.log('🔐 Auth: Token refreshed successfully');
@@ -76,12 +77,16 @@ export const AuthProvider = ({ children }) => {
     try {
       setIsLoading(true);
       
-      // Store token and user info
-      const { access_token, expires_at, user: userData } = authResponse;
-      await tokenManager.storeToken(access_token, expires_at, userCredentials);
+      // Extract tokens and user data from response
+      const accessToken = authResponse.access_token || authResponse.token;
+      const userData = authResponse.user || authResponse.data?.user;
       
-      // Update state
-      setToken(access_token);
+      if (!accessToken) {
+        throw new Error('No access token received from server');
+      }
+      
+      // Tokens are already stored by authAPI.login, just update state
+      setToken(accessToken);
       setUser(userData || userCredentials);
       setIsAuthenticated(true);
       

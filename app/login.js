@@ -6,30 +6,34 @@ import {
   TouchableOpacity, 
   StyleSheet, 
   ScrollView,
-  // Animated,
   Dimensions,
   StatusBar,
   KeyboardAvoidingView,
   Platform,
   Alert
 } from 'react-native';
-// Safe area is handled globally in app/_layout.js
 import { Eye, EyeOff, Mail, Lock, ChevronRight, Zap, User } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI } from './services/authService';
 import { registerForPushNotificationsAsync } from './utils/notifications';
-// Production Google Sign-In implementation with Expo Go fallback
+import Constants from 'expo-constants';
+
+// Google Sign-In implementation with proper error handling
 let GoogleSignin = null;
 
 try {
   GoogleSignin = require('@react-native-google-signin/google-signin').GoogleSignin;
+  console.log('✅ Google Sign-In module loaded successfully');
 } catch (error) {
-  console.warn('Google Sign-In not available in Expo Go:', error.message);
-  // GoogleSignin will remain null for Expo Go
+  console.warn('⚠️ Google Sign-In not available:', error.message);
 }
+
+// Google OAuth client IDs - Only use webClientId
+const WEB_CLIENT_ID = Constants.expoConfig?.extra?.googleSignIn?.webClientId || 
+                      '334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -52,23 +56,23 @@ export default function LoginScreen() {
     if (GoogleSignin) {
       try {
         GoogleSignin.configure({
-          webClientId: '334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com',
+          webClientId: WEB_CLIENT_ID, // Only webClientId is needed
           offlineAccess: true,
-          hostedDomain: '',
           forceCodeForRefreshToken: true,
-          scopes: ['profile', 'email'],
+          scopes: ['profile', 'email', 'openid'], // openid is required for idToken
         });
+        
         console.log('✅ Google Sign-In configured successfully');
-        console.log('🔍 Configuration details:', {
-          webClientId: '334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com',
+        console.log('Configuration details:', {
+          webClientId: WEB_CLIENT_ID ? 'Present' : 'Missing',
           offlineAccess: true,
-          scopes: ['profile', 'email']
+          scopes: ['profile', 'email', 'openid']
         });
       } catch (error) {
         console.error('❌ Google Sign-In configuration failed:', error);
       }
     } else {
-      console.warn('⚠️ GoogleSignin is not available - this might indicate a configuration issue');
+      console.warn('⚠️ Google Sign-In not available - requires native build (EAS Build)');
     }
   }, []);
 
@@ -79,70 +83,19 @@ export default function LoginScreen() {
     }
   }, [isAuthenticated, isLoading, router]);
 
-  // Animation refs
-  // const fadeAnim = useRef(new Animated.Value(0)).current;
-  // const slideUpAnim = useRef(new Animated.Value(50)).current;
-  // const slideLeftAnim = useRef(new Animated.Value(30)).current;
-  // const scaleAnim = useRef(new Animated.Value(0.9)).current;
-  // const buttonScale = useRef(new Animated.Value(1)).current;
-  // const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  // useEffect(() => {
-  //   // Staggered animations
-  //   Animated.stagger(200, [
-  //     Animated.parallel([
-  //       Animated.timing(fadeAnim, {
-  //         toValue: 1,
-  //         duration: 800,
-  //         useNativeDriver: true,
-  //       }),
-  //       Animated.timing(slideUpAnim, {
-  //         toValue: 0,
-  //         duration: 600,
-  //         useNativeDriver: true,
-  //       }),
-  //     ]),
-  //     Animated.timing(slideLeftAnim, {
-  //       toValue: 0,
-  //       duration: 600,
-  //       useNativeDriver: true,
-  //     }),
-  //     Animated.spring(scaleAnim, {
-  //       toValue: 1,
-  //       tension: 20,
-  //       friction: 8,
-  //       useNativeDriver: true,
-  //     }),
-  //   ])
-  // ).start();
-
-  //   // Continuous pulse animation for accent elements
-  //   const pulse = Animated.loop(
-  //     Animated.sequence([
-  //       Animated.timing(pulseAnim, {
-  //         toValue: 1.1,
-  //         duration: 2000,
-  //         useNativeDriver: true,
-  //       }),
-  //       Animated.timing(pulseAnim, {
-  //         toValue: 1,
-  //         duration: 2000,
-  //         useNativeDriver: true,
-  //       }),
-  //     ])
-  //   );
-  //   pulse.start();
-  // }, []);
-
   const validateForm = () => {
     const newErrors = {};
     
     if (!emailOrUsername.trim()) {
       newErrors.emailOrUsername = 'Email is required';
+    } else if (!emailOrUsername.includes('@')) {
+      newErrors.emailOrUsername = 'Please enter a valid email address';
     }
     
     if (!password.trim()) {
       newErrors.password = 'Password is required';
+    } else if (password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
     }
     
     setErrors(newErrors);
@@ -157,26 +110,20 @@ export default function LoginScreen() {
     try {
       // Get device token for push notifications
       const deviceToken = await registerForPushNotificationsAsync();
+      console.log('Device token for login:', deviceToken ? 'Present' : 'None');
       
       const loginData = {
         email: emailOrUsername.trim(),
         password: password,
-        device_token: deviceToken, // Send the Expo push token as device_token (null if not available)
+        device_token: deviceToken,
       };
       
-  
+      console.log('Attempting regular login for:', loginData.email);
       const res = await authAPI.login(loginData);
-
-      const token =
-        res.token ||
-        res.accessToken ||
-        res.data?.token ||
-        res.access_token ||
-        res.data?.access_token;
 
       const name = res.user?.name || res.user?.username || emailOrUsername.trim();
 
-      // Use AuthContext to handle login
+      // Use AuthContext to handle login - pass the response directly
       const loginResult = await login(loginData, res);
       
       if (loginResult.success) {
@@ -185,155 +132,251 @@ export default function LoginScreen() {
 
         setTimeout(() => {
           setShowWelcome(false);
-          // Navigate to livechat after successful login
           router.replace('/(tabs)/LiveChat');
         }, 2000);
       } else {
         throw new Error(loginResult.error || 'Login failed');
       }
     } catch (err) {
+      console.error('Regular login error:', err);
       const msg =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
         err?.message ||
-        'Login failed. Please try again.';
-      alert(msg);
+        'Login failed. Please check your credentials and try again.';
+      Alert.alert('Login Error', msg);
     } finally {
       setLoading(false);
     }
   };
 
+  // FIXED: Handle Google Sign-In with correct parameter names
   const handleGoogleSignIn = async () => {
+    console.log('🚀 ===== GOOGLE SIGN-IN STARTED =====');
     setGoogleLoading(true);
     
     try {
-      // Check if Google Sign-In is available
+      // Step 1: Check if Google Sign-In is available
+      console.log('Step 1: Checking Google Sign-In availability...');
       if (!GoogleSignin) {
-        Alert.alert(
-          'Google Sign-In Not Available',
-          'Google Sign-In requires a development build to work properly. Please build the app using EAS Build to use this feature.',
-          [{ text: 'OK' }]
-        );
-        return;
+        throw new Error('Google Sign-In requires a development build. Please build the app using EAS Build to use this feature.');
       }
-      
-      // Check if Google Play Services are available
-      console.log('🔐 Checking Google Play Services...');
-      await GoogleSignin.hasPlayServices();
-      console.log('✅ Google Play Services available');
-      
-      // Additional debugging for configuration
-      console.log('🔍 Google Sign-In configuration check:');
-      console.log('🔍 Package name from app.json:', 'com.echoleads.EchoLeads');
-      console.log('🔍 Web client ID:', '334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com');
-      
-      // Get device token for push notifications
-      console.log('🔐 Getting device token...');
-      const deviceToken = await registerForPushNotificationsAsync();
-      console.log('✅ Device token received:', deviceToken ? 'Yes' : 'No');
-      
-      // Sign in with Google
-      console.log('🔐 Initiating Google Sign-In...');
-      const userInfo = await GoogleSignin.signIn();
-      console.log('✅ Google Sign-In successful, user info received');
-      console.log('🔍 User info details:', {
-        hasIdToken: !!userInfo.idToken,
-        hasAccessToken: !!userInfo.accessToken,
-        hasUser: !!userInfo.user,
-        userEmail: userInfo.user?.email,
-        userName: userInfo.user?.name
+      console.log('✅ Google Sign-In module available');
+
+      // Step 2: Check Google Play Services
+      console.log('Step 2: Checking Google Play Services...');
+      await GoogleSignin.hasPlayServices({
+        showPlayServicesUpdateDialog: true,
       });
+      console.log('✅ Google Play Services available');
+
+      // Step 3: Sign out any previous session for clean state
+      console.log('Step 3: Clearing previous Google session...');
+      try {
+        await GoogleSignin.signOut();
+        console.log('✅ Previous session cleared');
+      } catch (signOutError) {
+        console.log('ℹ️ No previous session to clear');
+      }
+
+      // Step 4: Get device token for push notifications
+      console.log('Step 4: Getting device token...');
+      let deviceToken = null;
+      try {
+        deviceToken = await registerForPushNotificationsAsync();
+        console.log('✅ Device token obtained:', deviceToken ? 'Yes' : 'No');
+      } catch (tokenError) {
+        console.warn('⚠️ Failed to get device token:', tokenError.message);
+      }
+
+      // Step 5: Sign in with Google - Handle new response format
+      console.log('Step 5: Initiating Google Sign-In...');
+      const result = await GoogleSignin.signIn();
+      console.log('✅ Google Sign-In successful');
       
-      // Get the ID token
-      let googleToken = userInfo.idToken;
+      // Handle the response structure
+      console.log('Raw Google Sign-In result:', result);
+      console.log('Result type:', typeof result);
+      console.log('Result keys:', Object.keys(result));
       
-      // Fallback: try to get token from different properties
-      if (!googleToken) {
-        console.warn('⚠️ idToken not found, trying alternative properties...');
-        googleToken = userInfo.data?.idToken || userInfo.token || userInfo.accessToken;
-        console.log('🔍 Alternative token found:', !!googleToken);
+      // Extract user info from the correct location
+      let userInfo = result;
+      if (result.data) {
+        console.log('Found data property, extracting userInfo from result.data');
+        userInfo = result.data;
       }
       
-      if (!googleToken) {
+      console.log('Extracted userInfo:', userInfo);
+      console.log('UserInfo keys:', Object.keys(userInfo || {}));
+
+      // Step 6: Extract ID token - CRITICAL: Backend expects 'token', not 'id_token'
+      console.log('Step 6: Extracting Google ID token...');
+      let idToken = null;
+      
+      // Try multiple possible locations for the idToken
+      if (userInfo.idToken) {
+        idToken = userInfo.idToken;
+        console.log('Found idToken in userInfo.idToken');
+      } else if (userInfo.data?.idToken) {
+        idToken = userInfo.data.idToken;
+        console.log('Found idToken in userInfo.data.idToken');
+      } else if (result.idToken) {
+        idToken = result.idToken;
+        console.log('Found idToken in result.idToken');
+      } else if (result.data?.idToken) {
+        idToken = result.data.idToken;
+        console.log('Found idToken in result.data.idToken');
+      }
+
+      // Also get access token if idToken is not available
+      if (!idToken && userInfo.accessToken) {
+        console.warn('No idToken found, but accessToken is available - this might work');
+        idToken = userInfo.accessToken;
+      }
+      
+      if (!idToken) {
         console.error('❌ No Google ID token received');
-        console.error('❌ Full userInfo object:', JSON.stringify(userInfo, null, 2));
-        console.error('❌ Available properties:', Object.keys(userInfo));
-        throw new Error('No Google ID token received');
+        console.error('Full result structure:', JSON.stringify(result, null, 2));
+        console.error('UserInfo structure:', JSON.stringify(userInfo, null, 2));
+        console.error('Available properties in result:', Object.keys(result));
+        console.error('Available properties in userInfo:', Object.keys(userInfo || {}));
+        
+        throw new Error('No Google ID token received. The Google Sign-In response format has changed or webClientId is not configured correctly.');
       }
-      console.log('✅ Google ID token received, length:', googleToken.length);
+
+      // Step 7: Validate token format
+      console.log('Step 7: Validating token format...');
+      console.log('Token length:', idToken.length);
+      console.log('Token preview:', idToken.substring(0, 50) + '...');
       
-      // Call the Google login API
-      const res = await authAPI.googleLogin(googleToken, deviceToken);
+      // Basic token validation
+      const tokenParts = idToken.split('.');
+      console.log('Token parts count:', tokenParts.length);
       
-      const name = res.user?.name || res.user?.username || userInfo.user.name || 'User';
-      
-      // Use AuthContext to handle login
-      const loginResult = await login({ googleToken, deviceToken }, res);
+      if (tokenParts.length === 3) {
+        try {
+          const header = JSON.parse(atob(tokenParts[0]));
+          const payload = JSON.parse(atob(tokenParts[1]));
+          console.log('✅ Valid JWT token structure');
+          console.log('Token payload preview:', {
+            iss: payload.iss,
+            aud: payload.aud,
+            email: payload.email,
+            name: payload.name
+          });
+        } catch (decodeError) {
+          console.warn('Token decode failed, but continuing anyway:', decodeError.message);
+        }
+      }
+
+      // Step 8: FIXED - Prepare login data with correct parameter names for backend
+      console.log('Step 8: Preparing backend request...');
+      const googleLoginData = {
+        token: idToken,          // CRITICAL: Backend expects 'token', not 'id_token'
+        device_token: deviceToken
+      };
+
+      console.log('Sending to backend:', {
+        token: 'Present (length: ' + idToken.length + ')',
+        device_token: deviceToken ? 'Present' : 'null'
+      });
+
+      // Step 9: Call backend Google login API
+      console.log('Step 9: Calling backend API...');
+      const res = await authAPI.googleLogin(googleLoginData);
+      console.log('✅ Backend responded successfully');
+
+      // Step 10: Extract user information
+      console.log('Step 10: Processing login result...');
+      const name = res.user?.name || res.user?.username || userInfo.user?.name || userInfo.name || 'User';
+
+      // Step 11: Use AuthContext to handle login
+      console.log('Step 11: Using AuthContext to handle login...');
+      const loginResult = await login(googleLoginData, res);
       
       if (loginResult.success) {
+        console.log('✅ Login successful, showing welcome screen');
         setUsername(name);
         setShowWelcome(true);
-  
+
         setTimeout(() => {
           setShowWelcome(false);
           router.replace('/(tabs)/LiveChat');
         }, 2000);
       } else {
+        console.error('❌ AuthContext login failed:', loginResult.error);
         throw new Error(loginResult.error || 'Google login failed');
       }
+
     } catch (error) {
-      let errorMessage = 'Google sign-in failed. Please try again.';
-      
-      if (error.code === 'SIGN_IN_CANCELLED') {
-        errorMessage = 'Google sign-in was cancelled.';
-      } else if (error.code === 'IN_PROGRESS') {
-        errorMessage = 'Google sign-in is already in progress.';
-      } else if (error.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
-        errorMessage = 'Google Play Services not available.';
-      } else if (error.code === 'DEVELOPER_ERROR') {
-        errorMessage = 'Configuration error. This usually means the app needs to be rebuilt after configuration changes.';
-        console.error('❌ DEVELOPER_ERROR details:', {
-          code: error.code,
-          message: error.message,
-          suggestion: 'Try rebuilding the app with: npx eas build --profile development --platform android'
-        });
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      console.error('❌ Google Sign-In Error Details:', {
+      console.log('❌ ===== GOOGLE SIGN-IN ERROR =====');
+      console.error('Error details:', {
+        name: error.name,
         code: error.code,
         message: error.message,
-        stack: error.stack
+        response: error.response?.data,
+        status: error.response?.status
       });
+      
+      let errorMessage = 'Google sign-in failed. Please try again.';
+      
+      // Handle specific error codes with helpful messages
+      switch (error.code) {
+        case 'SIGN_IN_CANCELLED':
+          errorMessage = 'Google sign-in was cancelled.';
+          break;
+        case 'IN_PROGRESS':
+          errorMessage = 'Google sign-in is already in progress. Please wait.';
+          break;
+        case 'PLAY_SERVICES_NOT_AVAILABLE':
+          errorMessage = 'Google Play Services is not available or needs to be updated.';
+          break;
+        case 'DEVELOPER_ERROR':
+          errorMessage = 'Google Sign-In configuration error. Please check SHA1 fingerprint and rebuild the app.';
+          console.error('DEVELOPER_ERROR - Possible causes:');
+          console.error('1. SHA1 fingerprint mismatch in Google Console');
+          console.error('2. Package name mismatch');
+          console.error('3. Client ID configuration incorrect');
+          break;
+        default:
+          if (error.response?.status === 422) {
+            const backendError = error.response.data;
+            if (backendError.errors?.token) {
+              errorMessage = `Token validation failed: ${backendError.errors.token[0]}`;
+            } else if (backendError.errors?.id_token) {
+              errorMessage = `Token validation failed: ${backendError.errors.id_token[0]}`;
+            } else {
+              errorMessage = backendError.message || 'Invalid token sent to server.';
+            }
+          } else if (error.response?.status === 401) {
+            errorMessage = 'Google authentication failed. Please try again.';
+          } else if (error.message.includes('configuration')) {
+            errorMessage = 'Google Sign-In is not properly configured. Please contact support.';
+          } else if (error.message.includes('development build')) {
+            errorMessage = error.message; // Use the specific message about EAS Build
+          } else if (error.message.includes('webClientId')) {
+            errorMessage = 'Google Sign-In configuration issue. The webClientId may not be set correctly.';
+          } else if (error.message) {
+            errorMessage = error.message;
+          }
+          break;
+      }
       
       Alert.alert('Google Sign-In Error', errorMessage);
     } finally {
+      console.log('🔚 ===== GOOGLE SIGN-IN FINISHED =====');
       setGoogleLoading(false);
     }
   };
-
-
 
   // Show loading screen while checking authentication
   if (isLoading) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
-        <View style={{
-          flex: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}>
-          <Text style={{
-            fontSize: 18,
-            color: '#FFFFFF',
-            marginBottom: 16
-          }}>
-            Checking authentication...
-          </Text>
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingSpinner} />
+          <Text style={styles.loadingText}>Checking authentication...</Text>
         </View>
       </View>
     );
@@ -353,32 +396,10 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           {/* Header Section */}
-          <View 
-            style={[
-              styles.headerSection,
-              {
-                opacity: 1,
-                transform: [{ translateY: 0 }]
-              }
-            ]}
-          >
+          <View style={styles.headerSection}>
             <View style={styles.headerBackground}>
-              <View 
-                style={[
-                  styles.accentCircle1,
-                  {
-                    transform: [{ scale: 1 }]
-                  }
-                ]}
-              />
-              <View 
-                style={[
-                  styles.accentCircle2,
-                  {
-                    transform: [{ scale: 1.1 }]
-                  }
-                ]}
-              />
+              <View style={styles.accentCircle1} />
+              <View style={styles.accentCircle2} />
             </View>
             
             <View style={styles.headerContent}>
@@ -395,18 +416,7 @@ export default function LoginScreen() {
           </View>
 
           {/* Form Section */}
-          <View 
-            style={[
-              styles.formSection,
-              {
-                opacity: 1,
-                transform: [
-                  { translateX: 0 },
-                  { scale: 1 }
-                ]
-              }
-            ]}
-          >
+          <View style={styles.formSection}>
             <View style={styles.formCard}>
               <View style={styles.formHeader}>
                 <Text style={styles.formTitle}>Welcome Back</Text>
@@ -423,9 +433,16 @@ export default function LoginScreen() {
                       placeholder="Email"
                       placeholderTextColor="#999999"
                       value={emailOrUsername}
-                      onChangeText={setEmailOrUsername}
+                      onChangeText={(text) => {
+                        setEmailOrUsername(text);
+                        if (errors.emailOrUsername) {
+                          setErrors(prev => ({ ...prev, emailOrUsername: null }));
+                        }
+                      }}
                       keyboardType="email-address"
                       autoCapitalize="none"
+                      autoComplete="email"
+                      textContentType="emailAddress"
                     />
                   </View>
                   <View style={[styles.inputUnderline, errors.emailOrUsername && styles.inputUnderlineError]} />
@@ -441,13 +458,21 @@ export default function LoginScreen() {
                       placeholder="Password"
                       placeholderTextColor="#999999"
                       value={password}
-                      onChangeText={setPassword}
+                      onChangeText={(text) => {
+                        setPassword(text);
+                        if (errors.password) {
+                          setErrors(prev => ({ ...prev, password: null }));
+                        }
+                      }}
                       secureTextEntry={!showPassword}
                       autoCapitalize="none"
+                      autoComplete="password"
+                      textContentType="password"
                     />
                     <TouchableOpacity
                       onPress={() => setShowPassword(!showPassword)}
                       style={styles.eyeButton}
+                      accessibilityLabel={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? (
                         <EyeOff size={20} color="#999999" />
@@ -465,6 +490,9 @@ export default function LoginScreen() {
                   <TouchableOpacity
                     style={styles.checkboxContainer}
                     onPress={() => setRememberMe(!rememberMe)}
+                    accessibilityLabel="Remember me"
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: rememberMe }}
                   >
                     <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
                       {rememberMe && <Text style={styles.checkmark}>✓</Text>}
@@ -472,42 +500,33 @@ export default function LoginScreen() {
                     <Text style={styles.checkboxLabel}>Remember me</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity>
+                  <TouchableOpacity accessibilityLabel="Forgot password">
                     <Text style={styles.forgotLink}>Forgot Password?</Text>
                   </TouchableOpacity>
                 </View>
 
                 {/* Sign In Button */}
-                <View style={{ transform: [{ scale: 1 }] }}>
-                  <TouchableOpacity
-                    style={[styles.signInButton, loading && styles.signInButtonLoading]}
-                    onPress={handleSignIn}
-                    disabled={loading}
-                  >
-                    <View style={styles.buttonContent}>
-                      {loading ? (
-                        <View style={styles.loadingContainer}>
-                          <View 
-                            style={[
-                              styles.loadingSpinner,
-                              {
-                                transform: [{
-                                  rotate: '0deg'
-                                }]
-                              }
-                            ]}
-                          />
-                          <Text style={styles.buttonText}>Signing in...</Text>
-                        </View>
-                      ) : (
-                        <>
-                          <Text style={styles.buttonText}>Sign In</Text>
-                          <ChevronRight size={20} color="#1a1a1a" />
-                        </>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={[styles.signInButton, loading && styles.signInButtonLoading]}
+                  onPress={handleSignIn}
+                  disabled={loading}
+                  accessibilityLabel="Sign in"
+                  accessibilityRole="button"
+                >
+                  <View style={styles.buttonContent}>
+                    {loading ? (
+                      <View style={styles.loadingContainer}>
+                        <View style={styles.loadingSpinner} />
+                        <Text style={styles.buttonText}>Signing in...</Text>
+                      </View>
+                    ) : (
+                      <>
+                        <Text style={styles.buttonText}>Sign In</Text>
+                        <ChevronRight size={20} color="#1a1a1a" />
+                      </>
+                    )}
+                  </View>
+                </TouchableOpacity>
 
                 {/* Divider */}
                 <View style={styles.dividerContainer}>
@@ -525,6 +544,8 @@ export default function LoginScreen() {
                     ]}
                     onPress={handleGoogleSignIn}
                     disabled={googleLoading}
+                    accessibilityLabel="Continue with Google"
+                    accessibilityRole="button"
                   >
                     <View style={styles.socialButtonContent}>
                       {googleLoading ? (
@@ -535,31 +556,23 @@ export default function LoginScreen() {
                       ) : (
                         <>
                           <Text style={styles.googleIcon}>G</Text>
-                           <Text style={styles.socialButtonText}>
-                             Continue with Google
-                           </Text>
+                          <Text style={styles.socialButtonText}>
+                            Continue with Google
+                          </Text>
                         </>
                       )}
                     </View>
                   </TouchableOpacity>
-                  
                 </View>
               </View>
             </View>
           </View>
 
           {/* Footer */}
-          <View 
-            style={[
-              styles.footer,
-              {
-                opacity: 0.8
-              }
-            ]}
-          >
+          <View style={styles.footer}>
             <Text style={styles.footerText}>
               Don't have an account?{' '}
-              <TouchableOpacity>
+              <TouchableOpacity accessibilityLabel="Sign up">
                 <Text style={styles.footerLink}>Sign up here</Text>
               </TouchableOpacity>
             </Text>
@@ -569,15 +582,7 @@ export default function LoginScreen() {
       
       {/* Welcome Message Overlay */}
       {showWelcome && (
-        <View 
-          style={[
-            styles.welcomeOverlay,
-            {
-              opacity: 1,
-              transform: [{ scale: 1 }]
-            }
-          ]}
-        >
+        <View style={styles.welcomeOverlay}>
           <View style={styles.welcomeCard}>
             <Text style={styles.welcomeTitle}>Welcome back!</Text>
             <Text style={styles.welcomeMessage}>
@@ -603,6 +608,17 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     flexGrow: 1,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  loadingText: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    marginLeft: 16,
   },
   headerSection: {
     height: screenHeight * 0.4,
@@ -644,9 +660,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
-  },
-  brandIcon: {
-    marginRight: 12,
   },
   brandTitle: {
     fontSize: 36,
@@ -799,15 +812,11 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginRight: 8,
   },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   loadingSpinner: {
     width: 20,
     height: 20,
     borderWidth: 2,
-    borderColor: '#1a1a1a',
+    borderColor: '#FFFFFF',
     borderTopColor: 'transparent',
     borderRadius: 10,
     marginRight: 12,
@@ -850,10 +859,6 @@ const styles = StyleSheet.create({
   socialButtonLoading: {
     opacity: 0.7,
   },
-  socialButtonDisabled: {
-    opacity: 0.5,
-    backgroundColor: '#F5F5F5',
-  },
   socialButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -863,9 +868,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333333',
-  },
-  disabledText: {
-    color: '#999999',
   },
   googleIcon: {
     fontSize: 18,
@@ -916,9 +918,6 @@ const styles = StyleSheet.create({
     shadowRadius: 25,
     elevation: 15,
     maxWidth: screenWidth * 0.85,
-  },
-  welcomeIcon: {
-    marginBottom: 16,
   },
   welcomeTitle: {
     fontSize: 24,

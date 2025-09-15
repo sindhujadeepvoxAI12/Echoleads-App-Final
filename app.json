@@ -5,11 +5,12 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "echoleads",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.echoleads.EchoLeads"
     },
     "web": {
       "bundler": "metro",
@@ -31,8 +32,7 @@
       [
         "@react-native-google-signin/google-signin",
         {
-          "iosUrlScheme": "com.googleusercontent.apps.334297696005-or01n201vocu6rpnpchvstruijoq7aut",
-          "androidClientId": "334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com"
+          "iosUrlScheme": "com.googleusercontent.apps.334297696005-or01n201vocu6rpnpchvstruijoq7aut"
         }
       ]
     ],
@@ -41,6 +41,10 @@
     },
     "extra": {
       "router": {},
+      "googleSignIn": {
+        "androidClientId": "334297696005-ilhbfcc7v56725om1mpfv8f1t1rf7ki9.apps.googleusercontent.com",
+        "webClientId": "334297696005-or01n201vocu6rpnpchvstruijoq7aut.apps.googleusercontent.com"
+      },
       "eas": {
         "projectId": "3299e7d7-3dc9-4a5f-835d-44695c672e1d"
       }
@@ -53,8 +57,11 @@
         "android.permission.VIBRATE",
         "android.permission.WAKE_LOCK",
         "android.permission.INTERNET",
-        "android.permission.ACCESS_NETWORK_STATE"
-      ]
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.USE_BIOMETRIC"
+      ],
+      "versionCode": 1
     }
   }
 }

@@ -432,7 +432,6 @@ const MessageBubble = ({ message, isUser, index, onAttachmentClick }) => {
   });
 
   // Determine message positioning based on sender
-  // Note: With inverted FlatList, positioning is reversed
   const isUserMessage = message.sender === 'user'; // RIGHT side (system/bot messages)
   const isReceivedMessage = message.sender === 'received'; // LEFT side (user/customer messages)
 
@@ -738,13 +737,38 @@ const AgentNotification = ({ visible, message, onClose }) => {
 // File attachment functions and other functions will be moved inside the LiveChatScreen component
 
 // Main LiveChat Screen
-const LiveChatScreen = () => {
+  const LiveChatScreen = () => {
   const router = useRouter();
   const navigation = useNavigation();
   const { logout, isAuthenticated, isLoading } = useAuth();
   
   const [chats, setChats] = useState([]);
   console.log(chats, "chats>>")
+  
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      console.log('🚀 LiveChat: User not authenticated, redirecting to login...');
+      router.replace('/login');
+    }
+  }, [isAuthenticated, isLoading, router]);
+  
+  // Show loading screen while checking authentication
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF4500" />
+          <Text style={styles.loadingText}>Checking authentication...</Text>
+        </View>
+      </View>
+    );
+  }
+  
+  // Don't render anything if not authenticated (will redirect)
+  if (!isAuthenticated) {
+    return null;
+  }
   const [selectedChat, setSelectedChat] = useState(null);
   console.log(selectedChat, "selectedChat>>")
   const [activeCategory, setActiveCategory] = useState('all'); // 'all' or 'mine'
@@ -879,7 +903,7 @@ const LiveChatScreen = () => {
         console.log('📱 App returned to foreground - checking authentication...');
 
         // Check if we have any stored token at all
-        const storedToken = await AsyncStorage.getItem('authToken');
+        const storedToken = await AsyncStorage.getItem('accessToken');
         if (!storedToken) {
           console.log('📱 App returned to foreground - no stored token, redirecting to login');
           router.replace('/login');
@@ -998,7 +1022,7 @@ const LiveChatScreen = () => {
       setError(null);
 
       // Check if we have any stored token at all
-      const storedToken = await AsyncStorage.getItem('authToken');
+      const storedToken = await AsyncStorage.getItem('accessToken');
       if (!storedToken) {
         console.error('❌ LiveChat: No stored token for manual refresh');
         Alert.alert(
@@ -1033,9 +1057,9 @@ const LiveChatScreen = () => {
               {
                 text: 'OK',
                 onPress: () => {
-                  AsyncStorage.removeItem('authToken');
-                  AsyncStorage.removeItem('tokenExpiresAt');
-                  AsyncStorage.removeItem('userCredentials');
+                  AsyncStorage.removeItem('accessToken');
+                  AsyncStorage.removeItem('refreshToken');
+                  AsyncStorage.removeItem('userData');
                   router.replace('/login');
                 }
               }
@@ -1082,9 +1106,9 @@ const LiveChatScreen = () => {
                 text: 'OK',
                 onPress: () => {
                   // Clear any stored credentials
-                  AsyncStorage.removeItem('authToken');
-                  AsyncStorage.removeItem('tokenExpiresAt');
-                  AsyncStorage.removeItem('userCredentials');
+                  AsyncStorage.removeItem('accessToken');
+                  AsyncStorage.removeItem('refreshToken');
+                  AsyncStorage.removeItem('userData');
                   // Redirect to login
                   router.replace('/login');
                 }
@@ -1344,7 +1368,7 @@ const LiveChatScreen = () => {
         }
 
         // First check if we have any stored token at all
-        const storedToken = await AsyncStorage.getItem('authToken');
+        const storedToken = await AsyncStorage.getItem('accessToken');
         if (!storedToken) {
           console.log('🚀 LiveChat: No stored token found, redirecting to login...');
           router.replace('/login');
@@ -2399,7 +2423,7 @@ const LiveChatScreen = () => {
   // const uid = "8788226091_68ak449230e299";
   // const uid = "1756971867_68b9435bf05a1'";
 
-  const [whatsappbot_id, setwhatsappbot_id] = useState("");  
+  const [whatsappbot_id, setwhatsappbot_id] = useState("");
   const [uid, setuid] = useState("");
 
   const [socket, setSocket] = useState(null);
@@ -2919,42 +2943,14 @@ const LiveChatScreen = () => {
       // Show chat immediately if there are existing messages, otherwise show loading
       if (chat.messages && chat.messages.length > 0) {
         console.log('✅ handleChatSelect: Chat has existing messages, showing immediately');
-        setIsInitialLoad(true);
         setSelectedChat({
           ...chat,
           unreadCount: 0,
           messages: chat.messages,
           isLoading: false
         });
-        
-        // Immediately scroll to last message when chat opens (WhatsApp-like behavior)
-        console.log('🔄 Force scroll to bottom for existing messages');
-        debugScrollPosition();
-        forceScrollToBottomAggressive();
-        setIsInitialLoad(false);
-        
-        // Additional aggressive scroll attempts to ensure it works
-        setTimeout(() => {
-          console.log('🔄 Second aggressive scroll attempt');
-          debugScrollPosition();
-          forceScrollToBottomAggressive();
-        }, 100);
-        
-        setTimeout(() => {
-          console.log('🔄 Third aggressive scroll attempt');
-          debugScrollPosition();
-          forceScrollToBottomAggressive();
-        }, 300);
-        
-        // Final verification and force scroll
-        setTimeout(() => {
-          console.log('🔄 Final verification and force scroll for existing messages');
-          debugScrollPosition();
-          verifyAndForceScroll();
-        }, 500);
       } else {
         // Show loading state only if no existing messages
-        setIsInitialLoad(true);
         setSelectedChat({
           ...chat,
           unreadCount: 0,
@@ -2999,9 +2995,9 @@ const LiveChatScreen = () => {
               text: 'OK',
               onPress: () => {
                 // Clear any stored credentials
-                AsyncStorage.removeItem('authToken');
-                AsyncStorage.removeItem('tokenExpiresAt');
-                AsyncStorage.removeItem('userCredentials');
+                AsyncStorage.removeItem('accessToken');
+                AsyncStorage.removeItem('refreshToken');
+                AsyncStorage.removeItem('userData');
                 // Redirect to login
                 router.replace('/login');
               }
@@ -3127,7 +3123,6 @@ const LiveChatScreen = () => {
         clearTimeout(loadingTimeout);
 
         // Update UI
-        setIsInitialLoad(true);
         setSelectedChat(updatedChat);
         setChats(prevChats => prevChats.map(c => {
           const cId = c.uid || c.id || c.chat_id;
@@ -3135,28 +3130,6 @@ const LiveChatScreen = () => {
         }));
 
         console.log('✅ handleChatSelect: Chat updated with', uiMessages.length, 'messages');
-        
-        // Immediately scroll to last message after loading (WhatsApp-like behavior)
-        console.log('🔄 Force scroll to bottom after API load');
-        forceScrollToBottomAggressive();
-        setIsInitialLoad(false);
-        
-        // Additional aggressive scroll attempts to ensure it works
-        setTimeout(() => {
-          console.log('🔄 Second aggressive scroll attempt after API load');
-          forceScrollToBottomAggressive();
-        }, 200);
-        
-        setTimeout(() => {
-          console.log('🔄 Third aggressive scroll attempt after API load');
-          forceScrollToBottomAggressive();
-        }, 400);
-        
-        // Final verification and force scroll
-        setTimeout(() => {
-          console.log('🔄 Final verification and force scroll after API load');
-          verifyAndForceScroll();
-        }, 600);
       } else {
         console.log('⚠️ handleChatSelect: No messages found in response');
 
@@ -3868,297 +3841,6 @@ const LiveChatScreen = () => {
     }
   };
 
-  // More reliable scroll to bottom function
-  const scrollToBottomReliable = (animated = true) => {
-    if (flatListRef.current && selectedChat?.messages?.length > 0) {
-      console.log('🔄 scrollToBottomReliable: Attempting to scroll to bottom');
-      
-      // Try scrollToEnd first
-      flatListRef.current.scrollToEnd({ animated });
-      
-      // Also try scrollToOffset as backup
-      setTimeout(() => {
-        if (flatListRef.current) {
-          const messageCount = selectedChat.messages.length;
-          const estimatedHeight = messageCount * 100; // Approximate height per message
-          console.log(`🔄 scrollToBottomReliable: Trying scrollToOffset with ${estimatedHeight}px`);
-          flatListRef.current.scrollToOffset({ 
-            offset: estimatedHeight, 
-            animated: animated 
-          });
-        }
-      }, 100);
-      
-      // Verify scroll position after a delay
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.getScrollPosition?.((scrollX, scrollY) => {
-            console.log(`🔄 scrollToBottomReliable: Current scroll position: ${scrollY}px`);
-          });
-        }
-      }, 200);
-    }
-  };
-
-  // Simple and reliable scroll to bottom function
-  const scrollToBottomSimple = () => {
-    if (flatListRef.current && selectedChat?.messages?.length > 0) {
-      console.log('🔄 scrollToBottomSimple: Simple scroll to bottom');
-      
-      // Use scrollToEnd with immediate execution
-      flatListRef.current.scrollToEnd({ animated: false });
-      
-      // Follow up with animated scroll
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToEnd({ animated: true });
-        }
-      }, 50);
-    }
-  };
-
-  // Immediate scroll to bottom - no delays, no animations (for inverted FlatList)
-  const scrollToBottomImmediate = () => {
-    if (flatListRef.current && selectedChat?.messages?.length > 0) {
-      console.log('🔄 scrollToBottomImmediate: Immediate scroll to bottom (inverted)');
-      
-      // With inverted FlatList, scrollToEnd goes to the "top" which is actually the bottom
-      flatListRef.current.scrollToEnd({ animated: false });
-      
-      // Also try scrollToOffset with 0 as backup (goes to top of inverted list = bottom of messages)
-      if (flatListRef.current) {
-        flatListRef.current.scrollToOffset({ offset: 0, animated: false });
-      }
-    }
-  };
-
-  // Scroll directly to last message using multiple methods
-  const scrollToLastMessage = () => {
-    if (flatListRef.current && selectedChat?.messages?.length > 0) {
-      const lastIndex = selectedChat.messages.length - 1;
-      console.log(`🔄 scrollToLastMessage: Scrolling to last message at index ${lastIndex}`);
-      
-      // Method 1: scrollToIndex
-      try {
-        flatListRef.current.scrollToIndex({ 
-          index: lastIndex, 
-          animated: false,
-          viewPosition: 1 // 1 = bottom of viewport
-        });
-        console.log('🔄 scrollToLastMessage: scrollToIndex successful');
-      } catch (error) {
-        console.log('🔄 scrollToLastMessage: scrollToIndex failed, trying other methods');
-      }
-      
-      // Method 2: scrollToEnd (for inverted FlatList)
-      setTimeout(() => {
-        if (flatListRef.current) {
-          console.log('🔄 scrollToLastMessage: Trying scrollToEnd');
-          flatListRef.current.scrollToEnd({ animated: false });
-        }
-      }, 10);
-      
-      // Method 3: scrollToOffset with 0 (for inverted FlatList)
-      setTimeout(() => {
-        if (flatListRef.current) {
-          console.log('🔄 scrollToLastMessage: Trying scrollToOffset 0');
-          flatListRef.current.scrollToOffset({ offset: 0, animated: false });
-        }
-      }, 20);
-      
-      // Method 4: Another scrollToEnd
-      setTimeout(() => {
-        if (flatListRef.current) {
-          console.log('🔄 scrollToLastMessage: Final scrollToEnd attempt');
-          flatListRef.current.scrollToEnd({ animated: true });
-        }
-      }, 50);
-    }
-  };
-
-  // Force scroll to bottom with aggressive methods
-  const forceScrollToBottomAggressive = () => {
-    if (flatListRef.current && selectedChat?.messages?.length > 0) {
-      console.log('🔄 forceScrollToBottomAggressive: Using all methods to scroll to bottom');
-      
-      // Method 1: scrollToEnd
-      flatListRef.current.scrollToEnd({ animated: false });
-      
-      // Method 2: scrollToOffset with 0
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToOffset({ offset: 0, animated: false });
-        }
-      }, 10);
-      
-      // Method 3: scrollToIndex to last message
-      setTimeout(() => {
-        if (flatListRef.current) {
-          try {
-            const lastIndex = selectedChat.messages.length - 1;
-            flatListRef.current.scrollToIndex({ 
-              index: lastIndex, 
-              animated: false,
-              viewPosition: 1
-            });
-          } catch (error) {
-            console.log('🔄 forceScrollToBottomAggressive: scrollToIndex failed');
-          }
-        }
-      }, 20);
-      
-      // Method 4: Another scrollToEnd
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToEnd({ animated: false });
-        }
-      }, 30);
-      
-      // Method 5: Final scrollToEnd with animation
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToEnd({ animated: true });
-        }
-      }, 50);
-    }
-  };
-
-  // Robust scroll to bottom with verification (for inverted FlatList)
-  const scrollToBottomRobust = () => {
-    if (flatListRef.current && selectedChat?.messages?.length > 0) {
-      console.log('🔄 scrollToBottomRobust: Starting robust scroll to bottom (inverted)');
-      
-      // With inverted FlatList, scrollToEnd goes to the "top" which is actually the bottom
-      // Method 1: scrollToEnd (goes to top of inverted list = bottom of messages)
-      flatListRef.current.scrollToEnd({ animated: false });
-      
-      // Method 2: scrollToOffset with 0 (goes to top of inverted list = bottom of messages)
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToOffset({ offset: 0, animated: false });
-        }
-      }, 10);
-      
-      // Method 3: Another scrollToEnd
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToEnd({ animated: false });
-        }
-      }, 20);
-      
-      // Method 4: Final verification and retry
-      setTimeout(() => {
-        if (flatListRef.current) {
-          console.log('🔄 scrollToBottomRobust: Final scroll attempt (inverted)');
-          flatListRef.current.scrollToEnd({ animated: true });
-        }
-      }, 50);
-    }
-  };
-
-  // Wait for FlatList to be ready and then scroll
-  const scrollToBottomWhenReady = () => {
-    console.log('🔄 scrollToBottomWhenReady: Waiting for FlatList to be ready');
-    
-    const attemptScroll = (attempt = 1) => {
-      if (flatListRef.current && selectedChat?.messages?.length > 0) {
-        console.log(`🔄 scrollToBottomWhenReady: Attempt ${attempt} - FlatList is ready`);
-        scrollToBottomRobust();
-        
-        // Verify scroll position after a delay
-        setTimeout(() => {
-          if (flatListRef.current) {
-            flatListRef.current.getScrollPosition?.((scrollX, scrollY) => {
-              console.log(`🔄 scrollToBottomWhenReady: Scroll position after attempt ${attempt}: ${scrollY}px (inverted - 0 = bottom)`);
-            });
-          }
-        }, 100);
-      } else if (attempt < 20) { // Try up to 20 times (2 seconds)
-        console.log(`🔄 scrollToBottomWhenReady: Attempt ${attempt} - FlatList not ready, retrying in 100ms`);
-        setTimeout(() => attemptScroll(attempt + 1), 100);
-      } else {
-        console.log('🔄 scrollToBottomWhenReady: Max attempts reached, giving up');
-      }
-    };
-    
-    attemptScroll();
-  };
-
-  // Verify scroll position and force scroll if needed (for inverted FlatList)
-  const verifyAndForceScroll = () => {
-    if (flatListRef.current && selectedChat?.messages?.length > 0) {
-      console.log('🔄 verifyAndForceScroll: Verifying scroll position (inverted)');
-      
-      // First, try to scroll
-      forceScrollToBottomAggressive();
-      
-      // Then verify after a delay
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.getScrollPosition?.((scrollX, scrollY) => {
-            console.log(`🔄 verifyAndForceScroll: Current scroll position: ${scrollY}px (inverted)`);
-            console.log(`🔄 verifyAndForceScroll: Total messages: ${selectedChat.messages.length}`);
-            
-            // With inverted FlatList, scrollY = 0 means we're at the "top" which is actually the bottom
-            if (scrollY > 100) {
-              console.log('🔄 verifyAndForceScroll: Not at bottom (inverted), forcing scroll again');
-              forceScrollToBottomAggressive();
-            } else {
-              console.log('🔄 verifyAndForceScroll: Successfully scrolled to bottom (inverted)');
-            }
-          });
-        }
-      }, 200);
-    }
-  };
-
-  // Debug scroll position function
-  const debugScrollPosition = () => {
-    if (flatListRef.current && selectedChat?.messages?.length > 0) {
-      console.log('🔍 debugScrollPosition: Debugging scroll position');
-      console.log(`🔍 debugScrollPosition: Total messages: ${selectedChat.messages.length}`);
-      console.log(`🔍 debugScrollPosition: Last message index: ${selectedChat.messages.length - 1}`);
-      
-      flatListRef.current.getScrollPosition?.((scrollX, scrollY) => {
-        console.log(`🔍 debugScrollPosition: Current scroll position: X=${scrollX}, Y=${scrollY}`);
-        console.log(`🔍 debugScrollPosition: FlatList ref exists: ${!!flatListRef.current}`);
-        console.log(`🔍 debugScrollPosition: Selected chat exists: ${!!selectedChat}`);
-        console.log(`🔍 debugScrollPosition: Messages array length: ${selectedChat?.messages?.length || 0}`);
-      });
-    }
-  };
-
-  // Force scroll to bottom with multiple methods
-  const forceScrollToBottom = () => {
-    if (flatListRef.current && selectedChat?.messages?.length > 0) {
-      console.log('🔄 forceScrollToBottom: Using reliable methods to scroll to bottom');
-      
-      // Method 1: scrollToEnd (immediate)
-      flatListRef.current.scrollToEnd({ animated: false });
-      
-      // Method 2: scrollToOffset with large value
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToOffset({ offset: 999999, animated: false });
-        }
-      }, 50);
-      
-      // Method 3: Another scrollToEnd attempt
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToEnd({ animated: true });
-        }
-      }, 100);
-      
-      // Method 4: Final scrollToOffset attempt
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToOffset({ offset: 999999, animated: true });
-        }
-      }, 150);
-    }
-  };
-
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
@@ -4167,42 +3849,6 @@ const LiveChatScreen = () => {
       }
     };
   }, []);
-
-  // Scroll to bottom when selectedChat changes (more reliable approach)
-  useEffect(() => {
-    if (selectedChat && selectedChat.messages && selectedChat.messages.length > 0) {
-      console.log('🔄 useEffect: Chat selected, aggressive scrolling to bottom');
-      // Aggressive scroll attempts
-      forceScrollToBottomAggressive();
-      
-      // Additional aggressive scroll attempts
-      setTimeout(() => {
-        console.log('🔄 useEffect Aggressive scroll attempt 2');
-        forceScrollToBottomAggressive();
-      }, 100);
-      
-      setTimeout(() => {
-        console.log('🔄 useEffect Aggressive scroll attempt 3');
-        forceScrollToBottomAggressive();
-      }, 300);
-    }
-  }, [selectedChat]);
-
-  // Additional scroll trigger when component mounts with selected chat
-  useEffect(() => {
-    if (selectedChat && selectedChat.messages && selectedChat.messages.length > 0) {
-      console.log('🔄 useEffect: Component mounted with chat, ensuring scroll to bottom');
-      scrollToBottomImmediate();
-    }
-  }, []);
-
-  // Immediate scroll when FlatList is ready
-  useEffect(() => {
-    if (selectedChat && selectedChat.messages && selectedChat.messages.length > 0 && flatListRef.current) {
-      console.log('🔄 useEffect: FlatList ready, immediate scroll to bottom');
-      scrollToBottomImmediate();
-    }
-  }, [selectedChat?.messages?.length]);
 
   // Add keyboard listener to scroll to bottom when keyboard appears
   useEffect(() => {
@@ -4575,9 +4221,9 @@ const LiveChatScreen = () => {
             text: 'OK',
             onPress: () => {
               // Clear stored credentials
-              AsyncStorage.removeItem('authToken');
-              AsyncStorage.removeItem('tokenExpiresAt');
-              AsyncStorage.removeItem('userCredentials');
+              AsyncStorage.removeItem('accessToken');
+              AsyncStorage.removeItem('refreshToken');
+              AsyncStorage.removeItem('userData');
               // Redirect to login
               router.replace('/login');
             }
@@ -5010,22 +4656,6 @@ const LiveChatScreen = () => {
                 <FlatList
                   ref={flatListRef}
                   data={selectedChat.messages}
-                  inverted={true}
-                  initialScrollIndex={selectedChat.messages.length > 0 ? selectedChat.messages.length - 1 : 0}
-                  getItemLayout={(data, index) => ({
-                    length: 80, // Approximate height of each message
-                    offset: 80 * index,
-                    index,
-                  })}
-                  onScrollToIndexFailed={(info) => {
-                    console.log('🔄 onScrollToIndexFailed:', info);
-                    // Fallback to scrollToEnd if scrollToIndex fails
-                    setTimeout(() => {
-                      if (flatListRef.current) {
-                        flatListRef.current.scrollToEnd({ animated: false });
-                      }
-                    }, 100);
-                  }}
                   // keyExtractor={(item, index) => (item?.id || `msg-${index}`).toString()}
                   keyExtractor={(item, index) => {
                     const id = item?.id ?? `msg-${index}`;
@@ -5066,15 +4696,17 @@ const LiveChatScreen = () => {
                   onContentSizeChange={() => {
                     // Only auto-scroll if user is not manually scrolling and should auto-scroll
                     if (shouldAutoScroll && !isUserScrolling) {
-                      console.log('🔄 onContentSizeChange: Aggressive scroll to bottom');
-                      forceScrollToBottomAggressive();
+                      setTimeout(() => {
+                        flatListRef.current?.scrollToEnd({ animated: true });
+                      }, 100);
                     }
                   }}
                   onLayout={() => {
                     // Only auto-scroll on initial layout if should auto-scroll
                     if (shouldAutoScroll) {
-                      console.log('🔄 onLayout: Aggressive scroll to bottom');
-                      forceScrollToBottomAggressive();
+                      setTimeout(() => {
+                        flatListRef.current?.scrollToEnd({ animated: false });
+                      }, 100);
                     }
                   }}
                 />
